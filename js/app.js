@@ -188,11 +188,19 @@ const utils = {
     },
     openModal: (id) => {
         const el = document.getElementById(id);
-        if (el) el.classList.add('active');
+        if (el) {
+            el.classList.add('active');
+            document.body.classList.add('modal-open');
+        }
     },
     closeModal: (id) => {
         const el = document.getElementById(id);
-        if (el) el.classList.remove('active');
+        if (el) {
+            el.classList.remove('active');
+            if (document.querySelectorAll('.modal.active').length === 0) {
+                document.body.classList.remove('modal-open');
+            }
+        }
     },
     showAlert: (containerId, type, message) => {
         const container = document.getElementById(containerId);
@@ -240,12 +248,22 @@ document.addEventListener('keydown', (e) => {
         const modals = document.querySelectorAll('.modal.active');
         if (modals.length > 0) {
             modals[modals.length - 1].classList.remove('active');
+            if (document.querySelectorAll('.modal.active').length === 0) {
+                document.body.classList.remove('modal-open');
+            }
         }
         document.getElementById('sidebar')?.classList.remove('open');
     }
 });
 
 document.addEventListener('click', (e) => {
+    // Backdrop click to close modals
+    if (e.target && e.target.classList && e.target.classList.contains('modal') && e.target.classList.contains('active')) {
+        e.target.classList.remove('active');
+        if (document.querySelectorAll('.modal.active').length === 0) {
+            document.body.classList.remove('modal-open');
+        }
+    }
     const dropdown = document.getElementById('notif-dropdown');
     const wrapper = document.querySelector('.notif-wrapper');
     if (dropdown && dropdown.classList.contains('active') && (!wrapper || !wrapper.contains(e.target))) {

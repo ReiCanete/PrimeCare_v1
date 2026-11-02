@@ -80,6 +80,8 @@ async function updatePreviewId() {
     document.getElementById('preview-id').innerText = `P-${count.toString().padStart(3, '0')}`;
 }
 
+window.currentRegStep = 1;
+
 window.setAdmitType = function(type) {
     document.getElementById('admitType').value = type;
     document.getElementById('btn-outpatient').classList.toggle('active', type === 'Outpatient');
@@ -87,48 +89,148 @@ window.setAdmitType = function(type) {
     document.getElementById('inpatient-fields').style.display = type === 'Inpatient' ? 'grid' : 'none';
 };
 
-window.toggleCollapsible = function(id) {
-    document.getElementById(id).classList.toggle('active');
-};
-
 window.confirmCancel = async function() {
     if (isFormDirty && !confirm('Are you sure you want to cancel? All entered data will be lost.')) return;
     await resetForm();
 };
 
-async function handleRegistration(e) {
-    e.preventDefault();
+window.goToStep = async function(step) {
+    if (step === currentRegStep) return;
+    if (step > currentRegStep) {
+        // Must validate all previous steps sequentially before jumping ahead
+        for (let s = currentRegStep; s < step; s++) {
+            const valid = await validateStep(s);
+            if (!valid) return;
+        }
+    }
+    setStep(step);
+};
+
+window.nextStep = async function(step) {
+    const valid = await validateStep(step);
+    if (!valid) return;
+    setStep(step + 1);
+};
+
+window.prevStep = function(step) {
+    setStep(step - 1);
+};
+
+function setStep(step) {
+    window.currentRegStep = step;
+    
+    // Update step panels visibility
+    document.querySelectorAll('.reg-step-panel').forEach(p => p.style.display = 'none');
+    const targetPanel = document.getElementById(`step-panel-${step}`);
+    if (targetPanel) {
+        targetPanel.style.display = 'block';
+    }
+
+    // Update stepper tracker circles & completed state
+    document.querySelectorAll('#reg-stepper .stepper-step').forEach(el => {
+        const stepNum = parseInt(el.getAttribute('data-step'), 10);
+        el.classList.toggle('active', stepNum === step);
+        el.classList.toggle('completed', stepNum < step);
+    });
+
+    // Also support fallback tab-btn if present
+    document.querySelectorAll('#reg-stepper .tab-btn').forEach(btn => {
+        const btnStep = parseInt(btn.getAttribute('data-step'), 10);
+        btn.classList.toggle('active', btnStep === step);
+    });
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function validateStep(step) {
     clearAllErrors();
     let isValid = true;
 
-    // Required fields
-    const req = ['firstName', 'lastName', 'birthdate', 'sex', 'civilStatus', 'mobile', 'street', 'brgy', 'city', 'province', 'emergencyContactName', 'emergencyContactNumber', 'dateAdmitted'];
-    req.forEach(id => {
-        const el = document.getElementById(id);
-        if (!el.value.trim()) {
-            showFieldError(id, 'Required field');
+    if (step === 1) {
+        const req = ['firstName', 'lastName', 'birthdate', 'sex', 'civilStatus'];
+        req.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el || !el.value.trim()) {
+                showFieldError(id, 'Required field');
+                isValid = false;
+            }
+        });
+
+        const bdate = document.getElementById('birthdate').value;
+        if (bdate && new Date(bdate) > new Date()) {
+            showFieldError('birthdate', 'Invalid future birthdate');
             isValid = false;
         }
-    });
+    } else if (step === 2) {
+        const req = ['mobile', 'street', 'brgy', 'city', 'province'];
+        req.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el || !el.value.trim()) {
+                showFieldError(id, 'Required field');
+                isValid = false;
+            }
+        });
 
-    const mobile = document.getElementById('mobile').value;
-    if (mobile && !/^09\d{9}$/.test(mobile)) {
-        showFieldError('mobile', 'Must be a valid PH mobile (09XXXXXXXXX)');
-        isValid = false;
-    } else if (mobile && await api.isMobileTaken(mobile)) {
-        showFieldError('mobile', 'Mobile number is already registered.');
-        isValid = false;
-    }
+        const mobile = document.getElementById('mobile').value.trim();
+        if (mobile && !/^09\d{9}$/.test(mobile)) {
+            showFieldError('mobile', 'Must be a valid PH mobile (09XXXXXXXXX)');
+            isValid = false;
+        } else if (mobile && await api.isMobileTaken(mobile)) {
+            showFieldError('mobile', 'Mobile number is already registered.');
+            isValid = false;
+        }
 
-    const email = document.getElementById('email').value;
-    if (email && await api.isEmailTaken(email)) {
-        showFieldError('email', 'Email is already registered.');
-        isValid = false;
+        const email = document.getElementById('email').value.trim();
+        if (email && await api.isEmailTaken(email)) {
+            showFieldError('email', 'Email is already registered.');
+            isValid = false;
+        }
+    } else if (step === 3) {
+        const req = ['emergencyContactName', 'emergencyContactNumber', 'emergencyContactRelationship'];
+        req.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el || !el.value.trim()) {
+                showFieldError(id, 'Required field');
+                isValid = false;
+            }
+        });
+    } else if (step === 4) {
+        const req = ['dateAdmitted'];
+        req.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el || !el.value.trim()) {
+                showFieldError(id, 'Required field');
+                isValid = false;
+            }
+        });
+
+        const admitType = document.getElementById('admitType').value;
+        if (admitType === 'Inpatient') {
+            const ward = document.getElementById('ward').value;
+            if (!ward) {
+                showFieldError('ward', 'Ward is required for Inpatient admission');
+                isValid = false;
+            }
+        }
     }
 
     if (!isValid) {
-        utils.showAlert('alert-container', 'danger', 'Please complete all required fields correctly.');
-        return;
+        utils.showAlert('alert-container', 'danger', 'Please complete the required fields in this section before continuing.');
+    }
+    return isValid;
+}
+
+async function handleRegistration(e) {
+    e.preventDefault();
+    clearAllErrors();
+
+    // Validate all steps from 1 to 4 before final submission
+    for (let s = 1; s <= 4; s++) {
+        const valid = await validateStep(s);
+        if (!valid) {
+            setStep(s);
+            return;
+        }
     }
 
     // Build Data
@@ -161,6 +263,7 @@ window.resetForm = async function() {
     await updatePreviewId();
     clearAllErrors();
     isFormDirty = false;
+    setStep(1);
     document.getElementById('form-container').style.display = 'block';
     document.getElementById('success-container').style.display = 'none';
     window.scrollTo(0, 0);

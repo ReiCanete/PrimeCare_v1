@@ -36,66 +36,122 @@
                     <button type="button" class="toggle-btn" id="btn-inpatient" onclick="setAdmitType('Inpatient')">Inpatient</button>
                 </div>
 
+                <!-- Stepper Progress Tracker -->
+                <div class="stepper-tracker-container" id="reg-stepper">
+                    <div class="stepper-track-line"></div>
+                    <div class="stepper-step active" data-step="1" onclick="goToStep(1)">
+                        <div class="step-circle">1</div>
+                        <span class="step-label">Personal Info</span>
+                    </div>
+                    <div class="stepper-step" data-step="2" onclick="goToStep(2)">
+                        <div class="step-circle">2</div>
+                        <span class="step-label">Contact & Address</span>
+                    </div>
+                    <div class="stepper-step" data-step="3" onclick="goToStep(3)">
+                        <div class="step-circle">3</div>
+                        <span class="step-label">Emergency Contact</span>
+                    </div>
+                    <div class="stepper-step" data-step="4" onclick="goToStep(4)">
+                        <div class="step-circle">4</div>
+                        <span class="step-label">Admission</span>
+                    </div>
+                    <div class="stepper-step" data-step="5" onclick="goToStep(5)">
+                        <div class="step-circle">5</div>
+                        <span class="step-label">Additional Info</span>
+                    </div>
+                </div>
+
                 <form id="reg-form">
                     <input type="hidden" id="admitType" value="Outpatient">
 
-                    <h3 style="margin: 24px 0 16px; color: var(--color-primary); border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">Personal Information</h3>
-                    <div class="form-grid">
-                        <div class="form-group"><label>First Name <span class="text-danger">*</span></label><input type="text" id="firstName" class="form-control"></div>
-                        <div class="form-group"><label>Middle Name</label><input type="text" id="middleName" class="form-control"></div>
-                        <div class="form-group"><label>Last Name <span class="text-danger">*</span></label><input type="text" id="lastName" class="form-control"></div>
-                        <div class="form-group"><label>Suffix</label><input type="text" id="suffix" class="form-control"></div>
-                        
-                        <div class="form-group">
-                            <label>Birthdate <span class="text-danger">*</span></label>
-                            <input type="date" id="birthdate" class="form-control">
-                            <div id="age-display" style="display: none; font-size: 12px; color: var(--color-text-muted); margin-top: 4px;"></div>
+                    <!-- Step 1: Personal Information -->
+                    <div class="reg-step-panel" id="step-panel-1">
+                        <h3 style="margin: 0 0 16px; color: var(--color-primary); border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">Personal Information</h3>
+                        <div class="form-grid">
+                            <div class="form-group"><label>First Name <span class="text-danger">*</span></label><input type="text" id="firstName" class="form-control"></div>
+                            <div class="form-group"><label>Middle Name</label><input type="text" id="middleName" class="form-control"></div>
+                            <div class="form-group"><label>Last Name <span class="text-danger">*</span></label><input type="text" id="lastName" class="form-control"></div>
+                            <div class="form-group"><label>Suffix</label><input type="text" id="suffix" class="form-control"></div>
+                            
+                            <div class="form-group">
+                                <label>Birthdate <span class="text-danger">*</span></label>
+                                <input type="date" id="birthdate" class="form-control">
+                                <div id="age-display" style="display: none; font-size: 12px; color: var(--color-text-muted); margin-top: 4px;"></div>
+                            </div>
+                            <div class="form-group">
+                                <label>Sex <span class="text-danger">*</span></label>
+                                <select id="sex" class="form-control">
+                                    <option value="">Select...</option><option value="Male">Male</option><option value="Female">Female</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Civil Status <span class="text-danger">*</span></label>
+                                <select id="civilStatus" class="form-control">
+                                    <option value="">Select...</option><option value="Single">Single</option><option value="Married">Married</option><option value="Widowed">Widowed</option>
+                                </select>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label>Sex <span class="text-danger">*</span></label>
-                            <select id="sex" class="form-control">
-                                <option value="">Select...</option><option value="Male">Male</option><option value="Female">Female</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Civil Status <span class="text-danger">*</span></label>
-                            <select id="civilStatus" class="form-control">
-                                <option value="">Select...</option><option value="Single">Single</option><option value="Married">Married</option><option value="Widowed">Widowed</option>
-                            </select>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 32px; border-top: 1px solid var(--color-border); padding-top: 24px;">
+                            <button type="button" class="btn btn-outline" onclick="confirmCancel()">Cancel</button>
+                            <button type="button" class="btn btn-primary" onclick="nextStep(1)">Next: Contact & Address &rarr;</button>
                         </div>
                     </div>
 
-                    <h3 style="margin: 24px 0 16px; color: var(--color-primary); border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">Contact & Address</h3>
-                    <div class="form-grid">
-                        <div class="form-group"><label>Mobile Number <span class="text-danger">*</span></label><input type="text" id="mobile" class="form-control" placeholder="09XXXXXXXXX" maxlength="11"></div>
-                        <div class="form-group"><label>Email Address</label><input type="email" id="email" class="form-control"></div>
-                        <div class="form-group" style="grid-column: 1/-1;"><label>House No. / Street <span class="text-danger">*</span></label><input type="text" id="street" class="form-control"></div>
-                        <div class="form-group"><label>Barangay <span class="text-danger">*</span></label><input type="text" id="brgy" class="form-control"></div>
-                        <div class="form-group"><label>City / Municipality <span class="text-danger">*</span></label><input type="text" id="city" class="form-control"></div>
-                        <div class="form-group"><label>Province <span class="text-danger">*</span></label><input type="text" id="province" class="form-control"></div>
+                    <!-- Step 2: Contact & Address -->
+                    <div class="reg-step-panel" id="step-panel-2" style="display: none;">
+                        <h3 style="margin: 0 0 16px; color: var(--color-primary); border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">Contact & Address</h3>
+                        <div class="form-grid">
+                            <div class="form-group"><label>Mobile Number <span class="text-danger">*</span></label><input type="text" id="mobile" class="form-control" placeholder="09XXXXXXXXX" maxlength="11"></div>
+                            <div class="form-group"><label>Email Address</label><input type="email" id="email" class="form-control"></div>
+                            <div class="form-group" style="grid-column: 1/-1;"><label>House No. / Street <span class="text-danger">*</span></label><input type="text" id="street" class="form-control"></div>
+                            <div class="form-group"><label>Barangay <span class="text-danger">*</span></label><input type="text" id="brgy" class="form-control"></div>
+                            <div class="form-group"><label>City / Municipality <span class="text-danger">*</span></label><input type="text" id="city" class="form-control"></div>
+                            <div class="form-group"><label>Province <span class="text-danger">*</span></label><input type="text" id="province" class="form-control"></div>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 32px; border-top: 1px solid var(--color-border); padding-top: 24px;">
+                            <button type="button" class="btn btn-outline" onclick="prevStep(2)">&larr; Back to Personal Info</button>
+                            <button type="button" class="btn btn-primary" onclick="nextStep(2)">Next: Emergency Contact &rarr;</button>
+                        </div>
                     </div>
 
-                    <h3 style="margin: 24px 0 16px; color: var(--color-primary); border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">Emergency Contact</h3>
-                    <div class="form-grid">
-                        <div class="form-group"><label>Contact Name <span class="text-danger">*</span></label><input type="text" id="emergencyContactName" class="form-control"></div>
-                        <div class="form-group"><label>Contact Number <span class="text-danger">*</span></label><input type="text" id="emergencyContactNumber" class="form-control"></div>
-                        <div class="form-group"><label>Relationship <span class="text-danger">*</span></label><input type="text" id="emergencyContactRelationship" class="form-control"></div>
+                    <!-- Step 3: Emergency Contact -->
+                    <div class="reg-step-panel" id="step-panel-3" style="display: none;">
+                        <h3 style="margin: 0 0 16px; color: var(--color-primary); border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">Emergency Contact</h3>
+                        <div class="form-grid">
+                            <div class="form-group"><label>Contact Name <span class="text-danger">*</span></label><input type="text" id="emergencyContactName" class="form-control"></div>
+                            <div class="form-group"><label>Contact Number <span class="text-danger">*</span></label><input type="text" id="emergencyContactNumber" class="form-control"></div>
+                            <div class="form-group"><label>Relationship <span class="text-danger">*</span></label><input type="text" id="emergencyContactRelationship" class="form-control"></div>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 32px; border-top: 1px solid var(--color-border); padding-top: 24px;">
+                            <button type="button" class="btn btn-outline" onclick="prevStep(3)">&larr; Back to Contact & Address</button>
+                            <button type="button" class="btn btn-primary" onclick="nextStep(3)">Next: Admission Details &rarr;</button>
+                        </div>
                     </div>
 
-                    <h3 style="margin: 24px 0 16px; color: var(--color-primary); border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">Admission Details</h3>
-                    <div class="form-grid">
-                        <div class="form-group"><label>Date Admitted <span class="text-danger">*</span></label><input type="date" id="dateAdmitted" class="form-control"></div>
-                        <div class="form-group"><label>Assigned Doctor</label><select id="assignedDoctorId" class="form-control"><option value="">None</option></select></div>
-                    </div>
-                    <div class="form-grid" id="inpatient-fields" style="display: none; margin-top: 16px;">
-                        <div class="form-group"><label>Ward</label><select id="ward" class="form-control"><option value="">Select Ward...</option></select></div>
-                        <div class="form-group"><label>Bed Number</label><input type="text" id="bedNumber" class="form-control"></div>
+                    <!-- Step 4: Admission Details -->
+                    <div class="reg-step-panel" id="step-panel-4" style="display: none;">
+                        <h3 style="margin: 0 0 16px; color: var(--color-primary); border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">Admission Details</h3>
+                        <div class="form-grid">
+                            <div class="form-group"><label>Date Admitted <span class="text-danger">*</span></label><input type="date" id="dateAdmitted" class="form-control"></div>
+                            <div class="form-group"><label>Assigned Doctor</label><select id="assignedDoctorId" class="form-control"><option value="">None</option></select></div>
+                        </div>
+                        <div class="form-grid" id="inpatient-fields" style="display: none; margin-top: 16px;">
+                            <div class="form-group"><label>Ward <span class="text-danger">*</span></label><select id="ward" class="form-control"><option value="">Select Ward...</option></select></div>
+                            <div class="form-group"><label>Bed Number</label><input type="text" id="bedNumber" class="form-control"></div>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 32px; border-top: 1px solid var(--color-border); padding-top: 24px;">
+                            <button type="button" class="btn btn-outline" onclick="prevStep(4)">&larr; Back to Emergency Contact</button>
+                            <button type="button" class="btn btn-primary" onclick="nextStep(4)">Next: Additional Info &rarr;</button>
+                        </div>
                     </div>
 
-                    <div class="collapsible-header" onclick="toggleCollapsible('additional-info')" style="margin-top: 32px;">
-                        <span>Additional Information (Optional)</span><span>▼</span>
-                    </div>
-                    <div class="collapsible-content" id="additional-info">
+                    <!-- Step 5: Additional Information -->
+                    <div class="reg-step-panel" id="step-panel-5" style="display: none;">
+                        <h3 style="margin: 0 0 16px; color: var(--color-primary); border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">Additional Information (Optional)</h3>
                         <div class="form-grid">
                             <div class="form-group"><label>Blood Type</label><select id="bloodType" class="form-control"><option value="">Unknown</option><option value="A+">A+</option><option value="A-">A-</option><option value="B+">B+</option><option value="B-">B-</option><option value="AB+">AB+</option><option value="AB-">AB-</option><option value="O+">O+</option><option value="O-">O-</option></select></div>
                             <div class="form-group"><label>Allergies</label><input type="text" id="allergies" class="form-control" placeholder="e.g., Penicillin, Peanuts"></div>
@@ -106,11 +162,11 @@
                             <div class="form-group"><label>ID Number</label><input type="text" id="idNumber" class="form-control"></div>
                             <div class="form-group" style="grid-column: 1/-1;"><label>Notes</label><textarea id="notes" class="form-control" rows="3"></textarea></div>
                         </div>
-                    </div>
 
-                    <div style="display: flex; justify-content: flex-end; gap: 16px; margin-top: 32px; border-top: 1px solid var(--color-border); padding-top: 24px;">
-                        <button type="button" class="btn btn-outline" onclick="confirmCancel()">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="btn-save">Save Patient</button>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 32px; border-top: 1px solid var(--color-border); padding-top: 24px;">
+                            <button type="button" class="btn btn-outline" onclick="prevStep(5)">&larr; Back to Admission Details</button>
+                            <button type="submit" class="btn btn-primary" id="btn-save">Save Patient</button>
+                        </div>
                     </div>
                 </form>
             </div>

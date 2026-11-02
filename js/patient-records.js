@@ -233,44 +233,63 @@ window.viewPatient = async function(id) {
     const data = await api.getPatientSummary(id);
     if (!data) return;
 
-    document.getElementById('v-name').innerText = data.fullName;
-    document.getElementById('v-id').innerText = data.id;
+    const val = (v) => (v !== undefined && v !== null && String(v).trim() !== '') ? v : 'Not provided';
+    const escVal = (v) => (v !== undefined && v !== null && String(v).trim() !== '') ? utils.escapeHTML(v) : 'Not provided';
+
+    // Header elements
+    document.getElementById('v-name').innerText = data.fullName || 'Patient Details';
+    document.getElementById('v-id').innerText = data.id || 'N/A';
     
     let badge = 'success';
     if (data.status === 'pending') badge = 'warning';
     if (data.status === 'rejected') badge = 'danger';
-    document.getElementById('v-status').innerHTML = `<span class="badge badge-${badge}">${data.status.toUpperCase()}</span>`;
+    const statusText = (data.status || 'Active').toUpperCase();
+    document.getElementById('v-status').innerHTML = `<span class="badge badge-${badge}">${statusText}</span>`;
     
-    document.getElementById('v-dob').innerText = utils.formatDate(data.birthdate);
-    document.getElementById('v-sex').innerText = data.sex;
-    document.getElementById('v-civil').innerText = data.civilStatus || 'N/A';
-    document.getElementById('v-blood').innerText = data.bloodType || 'N/A';
-    document.getElementById('v-address').innerText = utils.escapeHTML(data.address);
-    document.getElementById('v-mobile').innerText = data.mobile;
-    document.getElementById('v-email').innerText = data.email || 'N/A';
-    document.getElementById('v-idtype').innerText = data.idType || 'N/A';
-    document.getElementById('v-idnum').innerText = utils.escapeHTML(data.idNumber) || 'N/A';
-    
-    document.getElementById('v-emname').innerText = utils.escapeHTML(data.emergencyContactName);
-    document.getElementById('v-emrel').innerText = utils.escapeHTML(data.emergencyContactRelationship);
-    document.getElementById('v-emnum').innerText = data.emergencyContactNumber;
+    // Tab 1: Demographics & Identity
+    document.getElementById('v-fullname').innerText = val(data.fullName);
+    document.getElementById('v-dob').innerText = data.birthdate ? utils.formatDate(data.birthdate) : 'Not provided';
+    const ageVal = data.birthdate ? utils.calcAge(data.birthdate) : null;
+    document.getElementById('v-age').innerText = (ageVal !== null && !isNaN(ageVal)) ? `${ageVal} yrs` : 'Not provided';
+    document.getElementById('v-sex').innerText = val(data.sex);
+    document.getElementById('v-civil').innerText = val(data.civilStatus);
+    document.getElementById('v-blood').innerText = val(data.bloodType);
+    document.getElementById('v-idtype').innerText = val(data.idType);
+    document.getElementById('v-idnum').innerText = escVal(data.idNumber);
 
-    document.getElementById('v-admit').innerText = data.admitType;
-    document.getElementById('v-date').innerText = utils.formatDate(data.dateAdmitted);
-    document.getElementById('v-ward').innerText = data.ward ? `${data.ward} (Bed ${data.bedNumber})` : 'N/A';
-    
-    const doc = await api.getDoctorById(data.assignedDoctorId);
-    document.getElementById('v-doc').innerText = doc ? utils.formatDoctorName(doc.name) : 'N/A';
+    // Tab 2: Contact & Address
+    document.getElementById('v-mobile').innerText = val(data.mobile);
+    document.getElementById('v-email').innerText = val(data.email);
+    document.getElementById('v-address').innerText = escVal(data.address);
+    document.getElementById('v-street').innerText = escVal(data.street || data.address);
+    document.getElementById('v-brgy').innerText = escVal(data.brgy);
+    document.getElementById('v-city').innerText = escVal(data.city);
+    document.getElementById('v-province').innerText = escVal(data.province);
 
-    let audit = `Registered: ${utils.formatDate(data.createdAt)}`;
-    if (data.status === 'verified') audit += ` | Verified by: ${data.verifiedBy} on ${utils.formatDate(data.verifiedAt)}`;
-    if (data.status === 'rejected') audit += ` | Rejected Reason: ${utils.escapeHTML(data.rejectionReason)}`;
+    // Tab 3: Emergency Contact
+    document.getElementById('v-emname').innerText = escVal(data.emergencyContactName);
+    document.getElementById('v-emrel').innerText = escVal(data.emergencyContactRelationship);
+    document.getElementById('v-emnum').innerText = val(data.emergencyContactNumber);
+
+    // Tab 4: Hospital & Admission Details
+    document.getElementById('v-admit').innerText = val(data.admitType);
+    document.getElementById('v-date').innerText = data.dateAdmitted ? utils.formatDate(data.dateAdmitted) : 'Not provided';
+    document.getElementById('v-ward').innerText = val(data.ward);
+    document.getElementById('v-bed').innerText = val(data.bedNumber);
+    
+    const doc = data.assignedDoctorId ? await api.getDoctorById(data.assignedDoctorId) : null;
+    document.getElementById('v-doc').innerText = doc ? utils.formatDoctorName(doc.name) : 'Not provided';
+    document.getElementById('v-verif-status').innerHTML = `<span class="badge badge-${badge}">${statusText}</span>`;
+
+    // Footer Audit Info
+    let audit = `Registered: ${data.createdAt ? utils.formatDate(data.createdAt) : 'Not provided'}`;
+    if (data.status === 'verified') audit += ` | Verified by: ${data.verifiedBy || 'Staff'} on ${data.verifiedAt ? utils.formatDate(data.verifiedAt) : 'N/A'}`;
+    if (data.status === 'rejected') audit += ` | Rejected Reason: ${escVal(data.rejectionReason)}`;
     document.getElementById('v-audit').innerText = audit;
 
     const user = await api.getCurrentUser();
     const isAdminStaff = user && (user.role === 'admin' || user.role === 'staff');
     
-    // Fix: Replaced inline styles with btn-success class
     if (data.status === 'pending' && isAdminStaff) {
         document.getElementById('v-action-bar').style.display = 'flex';
         document.getElementById('v-action-bar').innerHTML = `
@@ -285,11 +304,11 @@ window.viewPatient = async function(id) {
     }
     document.getElementById('v-reject-box').style.display = 'none';
 
-    document.getElementById('v-appts-list').innerHTML = data.appointments.length ? data.appointments.map(a => `<div class="list-item"><div><strong>${utils.formatDate(a.date)} ${utils.formatTime(a.time)}</strong><br><span style="font-size:var(--fs-xs); color:var(--color-text-muted);">${a.type}</span></div><span class="badge badge-info">${a.status}</span></div>`).join('') : '<div style="color:var(--color-text-muted);">No appointments.</div>';
-    document.getElementById('v-records-list').innerHTML = data.medicalRecords.length ? data.medicalRecords.map(r => `<div class="list-item"><div><strong>${utils.formatDate(r.date || r.createdAt.split('T')[0])}</strong><br><span style="font-size:var(--fs-sm);">${utils.escapeHTML(r.diagnosis)}</span></div></div>`).join('') : '<div style="color:var(--color-text-muted);">No medical records.</div>';
-    document.getElementById('v-bills-list').innerHTML = data.bills.length ? data.bills.map(b => `<div class="list-item"><div><strong>${utils.formatDate(b.date || b.createdAt.split('T')[0])}</strong><br><span style="font-size:var(--fs-sm);">Total: ${utils.formatCurrency(b.items.reduce((sum,i)=>sum+i.amount,0))}</span></div><span class="badge badge-${b.status==='Paid'?'success':'danger'}">${b.status}</span></div>`).join('') : '<div style="color:var(--color-text-muted);">No bills.</div>';
+    document.getElementById('v-appts-list').innerHTML = (data.appointments && data.appointments.length) ? data.appointments.map(a => `<div class="list-item"><div><strong>${utils.formatDate(a.date)} ${utils.formatTime(a.time)}</strong><br><span style="font-size:var(--fs-xs); color:var(--color-text-muted);">${a.type}</span></div><span class="badge badge-info">${a.status}</span></div>`).join('') : '<div style="color:var(--color-text-muted);">No appointments.</div>';
+    document.getElementById('v-records-list').innerHTML = (data.medicalRecords && data.medicalRecords.length) ? data.medicalRecords.map(r => `<div class="list-item"><div><strong>${utils.formatDate(r.date || r.createdAt.split('T')[0])}</strong><br><span style="font-size:var(--fs-sm);">${utils.escapeHTML(r.diagnosis)}</span></div></div>`).join('') : '<div style="color:var(--color-text-muted);">No medical records.</div>';
+    document.getElementById('v-bills-list').innerHTML = (data.bills && data.bills.length) ? data.bills.map(b => `<div class="list-item"><div><strong>${utils.formatDate(b.date || b.createdAt.split('T')[0])}</strong><br><span style="font-size:var(--fs-sm);">Total: ${utils.formatCurrency(b.items.reduce((sum,i)=>sum+i.amount,0))}</span></div><span class="badge badge-${b.status==='Paid'?'success':'danger'}">${b.status}</span></div>`).join('') : '<div style="color:var(--color-text-muted);">No bills.</div>';
 
-    switchTab('profile');
+    switchTab('demographics');
     utils.openModal('view-modal');
 };
 
