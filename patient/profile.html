@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Profile - PRIMECARE</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="../css/patient-fixes.css">
+</head>
+<body data-page="profile" data-area="patient">
+
+    <div id="app-shell"></div>
+
+    <main id="page-content">
+        <div class="page-header">
+            <div>
+                <h1>My Profile</h1>
+                <p style="color: var(--color-text-muted);">Manage your personal information and account security.</p>
+            </div>
+        </div>
+
+        <div id="alert-container"></div>
+
+        <div class="grid grid-2" style="align-items: start;">
+
+            <!-- Identity Card (Locked) -->
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                    <h3 style="color: var(--color-primary);">Verified Identity</h3>
+                    <span class="badge badge-neutral">🔒 Locked</span>
+                </div>
+                <div class="grid grid-2" style="gap: 16px; font-size: 14px;">
+                    <div style="grid-column: 1/-1;"><strong>Full Name:</strong> <span id="p-name"></span></div>
+                    <div><strong>Patient ID:</strong> <span id="p-id"></span></div>
+                    <div><strong>Birthdate:</strong> <span id="p-dob"></span> (<span id="p-age"></span> yrs)</div>
+                    <div><strong>Sex:</strong> <span id="p-sex"></span></div>
+                    <div><strong>Civil Status:</strong> <span id="p-civil"></span></div>
+                    <div><strong>ID Type:</strong> <span id="p-idtype"></span></div>
+                    <div><strong>ID Number:</strong> <span id="p-idnum"></span></div>
+                </div>
+                <div style="margin-top: 24px; font-size: 12px; color: var(--color-text-muted); border-top: 1px solid var(--color-border); padding-top: 16px;">
+                    To correct these details, please visit the hospital registration desk with a valid ID.
+                </div>
+            </div>
+
+            <!-- Security Card -->
+            <div class="card">
+                <h3 style="color: var(--color-primary); margin-bottom: 24px;">Change Password</h3>
+                <div id="pw-alert"></div>
+                <div class="form-group">
+                    <label>Current Password</label>
+                    <input type="password" id="pw-old" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>New Password</label>
+                    <input type="password" id="pw-new" class="form-control">
+                    <div class="hint">Min 8 chars, 1 uppercase, 1 number</div>
+                </div>
+                <div class="form-group">
+                    <label>Confirm New Password</label>
+                    <input type="password" id="pw-confirm" class="form-control">
+                </div>
+                <div style="text-align: right; margin-top: 16px;">
+                    <button class="btn btn-primary" onclick="submitPassword()">Update Password</button>
+                </div>
+            </div>
+
+            <!-- Editable Contact Info -->
+            <div class="card" style="grid-column: 1/-1;">
+                <h3 style="color: var(--color-primary); margin-bottom: 24px;">Contact & Emergency Information</h3>
+                <div id="contact-alert"></div>
+                <div class="form-grid">
+                    <div class="form-group"><label>Mobile Number <span class="text-danger">*</span></label><input type="text" id="c-mobile" class="form-control" maxlength="11"></div>
+                    <div class="form-group"><label>Email Address</label><input type="email" id="c-email" class="form-control"></div>
+                    <div class="form-group" style="grid-column: 1/-1;"><label>House No. / Street <span class="text-danger">*</span></label><input type="text" id="c-street" class="form-control"></div>
+                    <div class="form-group"><label>Barangay <span class="text-danger">*</span></label><input type="text" id="c-brgy" class="form-control"></div>
+                    <div class="form-group"><label>City / Municipality <span class="text-danger">*</span></label><input type="text" id="c-city" class="form-control"></div>
+                    <div class="form-group"><label>Province <span class="text-danger">*</span></label><input type="text" id="c-province" class="form-control"></div>
+                </div>
+                <h4 style="margin: 24px 0 16px; color: var(--color-primary);">Emergency Contact</h4>
+                <div class="grid grid-3">
+                    <div class="form-group"><label>Contact Name <span class="text-danger">*</span></label><input type="text" id="c-em-name" class="form-control"></div>
+                    <div class="form-group"><label>Contact Number <span class="text-danger">*</span></label><input type="text" id="c-em-num" class="form-control"></div>
+                    <div class="form-group"><label>Relationship <span class="text-danger">*</span></label><input type="text" id="c-em-rel" class="form-control"></div>
+                </div>
+                <div style="text-align: right; margin-top: 24px; border-top: 1px solid var(--color-border); padding-top: 24px;">
+                    <button class="btn btn-primary" onclick="submitContact()">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- OTP MODAL -->
+    <div class="modal" id="otp-modal">
+        <div class="modal-content" style="max-width: 400px; text-align: center;">
+            <div class="modal-header">
+                <h2>Verify Changes</h2>
+                <button class="modal-close" onclick="utils.closeModal('otp-modal')">&times;</button>
+            </div>
+            <p style="font-size: 14px; color: var(--color-text-muted); margin-bottom: 24px;">You changed your mobile number or email. Please enter the verification code sent to you.</p>
+
+            <div style="background: var(--warning-bg); border: 1px solid var(--color-warning); padding: 16px; border-radius: var(--radius-sm); margin-bottom: 24px; font-size: 14px;">
+                <strong>🛠️ Demo Mode SMS:</strong><br>
+                Code: <span id="demo-otp" style="font-size: 20px; font-weight: bold; letter-spacing: 2px; color: var(--color-primary);"></span>
+            </div>
+
+            <div class="form-group" style="max-width: 200px; margin: 0 auto;">
+                <input type="text" id="otp-input" class="form-control" placeholder="6-digit code" style="text-align: center; font-size: 20px; letter-spacing: 2px;" maxlength="6">
+            </div>
+
+            <div class="modal-footer" style="justify-content: center;">
+                <button class="btn btn-outline" onclick="utils.closeModal('otp-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="verifyAndSave()">Verify & Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/data.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/app.js"></script>
+    <script src="../js/patient-profile.js"></script>
+</body>
+</html>

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab Results - PRIMECARE</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body data-page="lab-results" data-area="staff">
+
+    <div id="app-shell"></div>
+
+    <main id="page-content">
+        <div id="access-denied" style="display: none;" class="card print-area-hide">
+            <h2 style="color: var(--color-danger);">Access Denied</h2>
+            <p>You do not have permission to access Lab Results.</p>
+        </div>
+
+        <div id="lab-module" style="display: none;">
+            <div class="page-header print-area-hide">
+                <div>
+                    <h1>Lab Results</h1>
+                    <p style="color: var(--color-text-muted);">Order tests and manage laboratory results.</p>
+                </div>
+                <button class="btn btn-primary doc-admin-only" onclick="openOrderModal()">+ Order Test</button>
+            </div>
+
+            <div id="alert-container" class="print-area-hide"></div>
+
+            <div class="card print-area-hide">
+                <div class="filter-toolbar">
+                    <input type="text" id="search-box" class="form-control" placeholder="Search Patient, Test..." style="max-width: 250px;">
+                    <select id="filter-category" class="form-control" style="width: auto;">
+                        <option value="All">All Categories</option><option value="Hematology">Hematology</option><option value="Chemistry">Chemistry</option><option value="Imaging">Imaging</option><option value="Urinalysis">Urinalysis</option><option value="Other">Other</option>
+                    </select>
+                    <select id="filter-status" class="form-control" style="width: auto;">
+                        <option value="All">All Statuses</option><option value="Ordered">Ordered</option><option value="Completed">Completed</option>
+                    </select>
+                    <input type="date" id="filter-date" class="form-control" style="width: auto;">
+                    <a href="#" onclick="resetFilters()" style="font-size: 14px; color: var(--color-accent); text-decoration: none; margin-left: auto;">Clear filters</a>
+                </div>
+
+                <div class="chip-group" id="status-chips">
+                    <div class="chip active" onclick="setFlagFilter('All')">All (<span id="c-all">0</span>)</div>
+                    <div class="chip" onclick="setFlagFilter('Normal')">Normal (<span id="c-nor">0</span>)</div>
+                    <div class="chip" onclick="setFlagFilter('Abnormal')">Abnormal (<span id="c-abn">0</span>)</div>
+                    <div class="chip" onclick="setFlagFilter('Critical')">Critical (<span id="c-cri">0</span>)</div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID & Date</th>
+                                <th>Patient</th>
+                                <th>Test & Category</th>
+                                <th>Status</th>
+                                <th>Result</th>
+                                <th>Flag</th>
+                                <th class="text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                </div>
+                <div class="pagination" id="pagination"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ORDER MODAL -->
+    <div class="modal" id="order-modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Order Lab Test</h2>
+                <button class="modal-close" onclick="utils.closeModal('order-modal')">&times;</button>
+            </div>
+            <div id="order-alert"></div>
+            <div class="form-group">
+                <label>Patient <span class="text-danger">*</span></label>
+                <select id="o-patient" class="form-control"></select>
+            </div>
+            <div class="form-group">
+                <label>Test Name <span class="text-danger">*</span></label>
+                <input type="text" id="o-test" class="form-control" list="common-tests" placeholder="e.g., Complete Blood Count">
+                <datalist id="common-tests">
+                    <option value="Complete Blood Count"></option><option value="Blood Glucose"></option><option value="Lipid Profile"></option><option value="Urinalysis"></option><option value="Chest X-ray"></option><option value="ECG"></option><option value="Creatinine"></option>
+                </datalist>
+            </div>
+            <div class="form-group">
+                <label>Category <span class="text-danger">*</span></label>
+                <select id="o-category" class="form-control">
+                    <option value="Hematology">Hematology</option><option value="Chemistry">Chemistry</option><option value="Imaging">Imaging</option><option value="Urinalysis">Urinalysis</option><option value="Other">Other</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="utils.closeModal('order-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="submitOrder()">Order Test</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ENTER RESULT MODAL -->
+    <div class="modal" id="result-modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2>Enter Lab Result</h2>
+                <button class="modal-close" onclick="utils.closeModal('result-modal')">&times;</button>
+            </div>
+            <div id="result-alert"></div>
+            <input type="hidden" id="r-id">
+            
+            <div style="background: var(--color-bg); padding: 16px; border-radius: var(--radius-sm); margin-bottom: 24px; font-size: 14px; border: 1px solid var(--color-border);">
+                <strong>Test:</strong> <span id="r-test-name"></span><br>
+                <strong>Patient:</strong> <span id="r-patient-name"></span>
+            </div>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Result Value <span class="text-danger">*</span></label>
+                    <input type="text" id="r-value" class="form-control" oninput="calculateLiveFlag()">
+                </div>
+                <div class="form-group">
+                    <label>Unit (Optional)</label>
+                    <input type="text" id="r-unit" class="form-control" placeholder="e.g., mg/dL">
+                </div>
+                <div class="form-group">
+                    <label>Reference Min (Optional)</label>
+                    <input type="number" step="any" id="r-min" class="form-control" oninput="calculateLiveFlag()">
+                </div>
+                <div class="form-group">
+                    <label>Reference Max (Optional)</label>
+                    <input type="number" step="any" id="r-max" class="form-control" oninput="calculateLiveFlag()">
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 16px;">
+                <label>Manual Flag (If not using min/max)</label>
+                <select id="r-manual-flag" class="form-control" onchange="calculateLiveFlag()">
+                    <option value="">Auto-compute</option><option value="Normal">Normal</option><option value="Abnormal">Abnormal</option><option value="Critical">Critical</option>
+                </select>
+            </div>
+
+            <div style="margin: 16px 0; padding: 16px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center; background: var(--color-surface);">
+                <strong>Computed Flag:</strong>
+                <span id="r-live-flag" class="badge badge-neutral">Pending</span>
+            </div>
+
+            <div class="form-group">
+                <label>Attachment (Optional)</label>
+                <input type="file" id="r-file" class="form-control">
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="utils.closeModal('result-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="submitResult()">Save Result</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW MODAL -->
+    <div class="modal" id="view-modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Lab Result Details</h2>
+                <button class="modal-close" onclick="utils.closeModal('view-modal')">&times;</button>
+            </div>
+            <div class="grid grid-2" style="font-size: 14px; gap: 16px; margin-top: 16px;">
+                <div><strong>ID:</strong> <span id="v-id"></span></div>
+                <div><strong>Status:</strong> <span id="v-status"></span></div>
+                <div style="grid-column: 1/-1;"><strong>Patient:</strong> <span id="v-patient"></span></div>
+                <div style="grid-column: 1/-1;"><strong>Test:</strong> <span id="v-test"></span> (<span id="v-cat"></span>)</div>
+                <div style="grid-column: 1/-1; padding: 16px; background: var(--color-bg); border-radius: var(--radius-sm); border: 1px solid var(--color-border);">
+                    <div style="margin-bottom: 8px;"><strong>Result:</strong> <span id="v-result" style="font-size: 20px; font-weight: bold; color: var(--color-primary);"></span> <span id="v-unit"></span></div>
+                    <div style="margin-bottom: 8px;"><strong>Reference Range:</strong> <span id="v-ref"></span></div>
+                    <div><strong>Flag:</strong> <span id="v-flag"></span></div>
+                </div>
+                <div style="grid-column: 1/-1; font-size: 12px; color: var(--color-text-muted); border-top: 1px solid var(--color-border); padding-top: 16px;">
+                    Ordered: <span id="v-ordered"></span><br>
+                    Performed: <span id="v-performed"></span>
+                </div>
+            </div>
+            <div class="modal-footer" id="v-review-box">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/data.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/app.js"></script>
+    <script src="../js/lab-results.js"></script>
+</body>
+</html>

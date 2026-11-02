@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telehealth - PRIMECARE</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="../css/patient-fixes.css">
+</head>
+<body data-page="telehealth" data-area="patient">
+
+    <div id="app-shell"></div>
+
+    <main id="page-content">
+
+        <div id="alert-container"></div>
+
+        <!-- LOBBY: upcoming telehealth appointments -->
+        <section id="lobby-view">
+            <div class="page-header">
+                <div>
+                    <h1>Telehealth</h1>
+                    <p style="color: var(--color-text-muted);">Join video consultations with your doctor from home.</p>
+                </div>
+            </div>
+
+            <div class="th-info print-area-hide">
+                <strong>Before your call:</strong> your appointment must be confirmed, the pre-visit
+                questionnaire completed, and the join window opens 15 minutes before the scheduled time.
+            </div>
+
+            <div id="appt-list">
+                <!-- Injected via JS -->
+            </div>
+        </section>
+
+        <!-- CALL VIEW -->
+        <section id="call-view" style="display: none;">
+            <div class="call-bar">
+                <div>
+                    <div class="call-label">Consultation with</div>
+                    <h2 id="call-doc-name" style="margin: 0;"></h2>
+                </div>
+                <div class="call-timer" id="call-timer">00:00</div>
+            </div>
+
+            <div class="call-layout">
+                <div class="video-stage">
+                    <div id="waiting-msg" class="waiting-msg">
+                        <div class="spinner"></div>
+                        <p>Waiting for the doctor to join&hellip;</p>
+                    </div>
+
+                    <div id="doctor-video" class="remote-video" style="display: none;"></div>
+
+                    <div class="local-pip">
+                        <video id="local-video" autoplay muted playsinline></video>
+                        <div id="no-cam-msg" class="no-cam">Camera unavailable</div>
+                    </div>
+
+                    <div class="call-controls">
+                        <button id="btn-mic" class="control-btn normal" onclick="toggleMic()" title="Mute / unmute">🎤</button>
+                        <button id="btn-cam" class="control-btn normal" onclick="toggleCam()" title="Camera on / off">📷</button>
+                        <button class="control-btn normal" onclick="toggleChat()" title="Chat">💬</button>
+                        <button class="control-btn danger end" onclick="endCall()" title="End call">📞</button>
+                    </div>
+                </div>
+
+                <aside id="chat-panel" class="chat-panel">
+                    <div class="chat-header">Chat</div>
+                    <div id="chat-messages" class="chat-messages"></div>
+                    <div class="chat-input-row">
+                        <input type="text" id="chat-input" class="form-control" placeholder="Type a message"
+                               onkeydown="if(event.key==='Enter') sendChat()">
+                        <button class="btn btn-primary btn-sm" onclick="sendChat()">Send</button>
+                    </div>
+                </aside>
+            </div>
+        </section>
+    </main>
+
+    <!-- PRE-VISIT QUESTIONNAIRE MODAL -->
+    <div class="modal" id="previsit-modal">
+        <div class="modal-content" style="max-width: 560px;">
+            <div class="modal-header">
+                <h2>Pre-visit Questionnaire</h2>
+                <button class="modal-close" onclick="utils.closeModal('previsit-modal')">&times;</button>
+            </div>
+            <div id="pv-alert"></div>
+            <input type="hidden" id="pv-apptId">
+
+            <div class="form-group">
+                <label>Symptoms <span class="text-danger">*</span></label>
+                <textarea id="pv-symptoms" class="form-control" rows="3" placeholder="Describe what you are experiencing"></textarea>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>How long?</label>
+                    <input type="text" id="pv-duration" class="form-control" placeholder="e.g. 3 days">
+                </div>
+                <div class="form-group">
+                    <label>Temperature (&deg;C)</label>
+                    <input type="number" step="0.1" id="pv-temp" class="form-control" placeholder="36.5">
+                </div>
+            </div>
+            <div class="form-group" style="margin-top: 20px;">
+                <label>Current Medications</label>
+                <textarea id="pv-meds" class="form-control" rows="2" placeholder="List any medicines you are taking"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Allergies</label>
+                <input type="text" id="pv-allergies" class="form-control" readonly>
+            </div>
+            <label class="consent-row">
+                <input type="checkbox" id="pv-consent">
+                <span>I consent to a telehealth session and understand it does not replace emergency care.</span>
+            </label>
+
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="utils.closeModal('previsit-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="submitPreVisit()">Submit Form</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FEEDBACK MODAL -->
+    <div class="modal" id="feedback-modal">
+        <div class="modal-content" style="max-width: 440px; text-align: center;">
+            <div class="modal-header">
+                <h2>How was your consultation?</h2>
+                <button class="modal-close" onclick="utils.closeModal('feedback-modal')">&times;</button>
+            </div>
+            <div class="star-rating" id="star-rating">
+                <span onclick="setStars(1)">☆</span>
+                <span onclick="setStars(2)">☆</span>
+                <span onclick="setStars(3)">☆</span>
+                <span onclick="setStars(4)">☆</span>
+                <span onclick="setStars(5)">☆</span>
+            </div>
+            <div class="form-group" style="margin-top: 20px; text-align: left;">
+                <label>Comments (optional)</label>
+                <textarea id="fb-comment" class="form-control" rows="3"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="utils.closeModal('feedback-modal')">Skip</button>
+                <button class="btn btn-primary" onclick="submitFeedback()">Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/data.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/app.js"></script>
+    <script src="../js/telehealth.js"></script>
+</body>
+</html>

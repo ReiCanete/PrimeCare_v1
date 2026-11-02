@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Departments - PRIMECARE</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="departments" data-area="public">
+
+    <div id="public-nav"></div>
+
+    <main style="padding: 2rem; max-width: 1200px; margin: 0 auto;">
+        <h1 class="page-title-lg">Medical Departments & Services</h1>
+        
+        <div class="grid grid-3" id="dept-grid">
+            <!-- Departments injected here -->
+        </div>
+    </main>
+
+    <!-- Department Modal -->
+    <div class="modal" id="dept-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Department Name</h2>
+                <button class="modal-close" onclick="utils.closeModal('dept-modal')">&times;</button>
+            </div>
+            <p id="modal-desc" style="margin-bottom: 1.5rem; color: var(--text-muted);"></p>
+            
+            <h3 style="margin-bottom: 0.5rem;">Specialized Services</h3>
+            <ul id="modal-services" style="padding-left: 1.5rem; margin-bottom: 1.5rem;"></ul>
+
+            <h3 style="margin-bottom: 0.5rem;">Our Specialists</h3>
+            <div id="modal-doctors" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+        </div>
+    </div>
+
+    <div id="public-footer"></div>
+
+    <script src="js/data.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/public.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const depts = await safeCall('getDepartments');
+            const grid = document.getElementById('dept-grid');
+            
+            if (!depts || depts.length === 0) {
+                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted);">No departments available at the moment.</div>';
+                return;
+            }
+
+            grid.innerHTML = depts.map(dept => `
+                <div class="card" style="cursor: pointer; transition: transform 0.2s;" onclick="openDept('${dept.name}')" onmouseover="this.style.transform='translateY(-5px)'" onmouseout="this.style.transform='translateY(0)'">
+                    <h3 style="color: var(--navy); margin-bottom: 0.5rem;">${dept.name}</h3>
+                    <p style="font-size: 0.875rem; color: var(--text-muted);">${dept.description}</p>
+                    <div style="margin-top: 1rem; color: var(--teal); font-weight: 500; font-size: 0.875rem;">View Details &rarr;</div>
+                </div>
+            `).join('');
+        });
+
+        async function openDept(name) {
+            const dept = ((await safeCall('getDepartments')) || []).find(d => d.name === name);
+            if (!dept) return;
+            const docs = ((await safeCall('getAll', 'doctors')) || []).filter(d => d.department === name);
+            
+            document.getElementById('modal-title').innerText = dept.name;
+            document.getElementById('modal-desc').innerText = dept.description;
+            
+            document.getElementById('modal-services').innerHTML = (dept.services || []).map(s => `<li>${s}</li>`).join('');
+            
+            const docsHtml = docs.length > 0 
+                ? docs.map(d => `<div style="padding: 0.5rem; background: var(--bg-color); border-radius: var(--radius-sm); font-size: 0.875rem;"><strong>${utils.formatDoctorName(d.name)}</strong> - ${d.specialization}</div>`).join('')
+                : `<div style="font-size: 0.875rem; color: var(--text-muted);">No doctors currently listed.</div>`;
+            document.getElementById('modal-doctors').innerHTML = docsHtml;
+
+            utils.openModal('dept-modal');
+        }
+    </script>
+</body>
+</html>

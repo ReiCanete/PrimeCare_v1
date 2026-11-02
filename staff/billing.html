@@ -1,0 +1,255 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Billing - PRIMECARE</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body data-page="billing" data-area="staff">
+
+    <div id="app-shell"></div>
+
+    <main id="page-content">
+        <div id="access-denied" style="display: none;" class="card print-area-hide">
+            <h2 style="color: var(--color-danger);">Access Denied</h2>
+            <p>You do not have permission to access Billing.</p>
+        </div>
+
+        <div id="billing-module" style="display: none;">
+            <div class="page-header print-area-hide">
+                <div>
+                    <h1>Billing & Payments</h1>
+                    <p style="color: var(--color-text-muted);">Manage patient invoices, payments, and receipts.</p>
+                </div>
+                <button class="btn btn-primary" onclick="openNewBillModal()">+ New Bill</button>
+            </div>
+
+            <div id="alert-container" class="print-area-hide"></div>
+
+            <!-- Summary Cards -->
+            <div class="grid grid-4 print-area-hide" style="margin-bottom: 24px;">
+                <div class="card stat-card">
+                    <h3>Total Unpaid</h3>
+                    <div class="value" id="s-unpaid" style="color: var(--color-danger);">₱0.00</div>
+                </div>
+                <div class="card stat-card">
+                    <h3>Collected Today</h3>
+                    <div class="value" id="s-today" style="color: var(--color-success);">₱0.00</div>
+                </div>
+                <div class="card stat-card">
+                    <h3>Collected This Month</h3>
+                    <div class="value" id="s-month" style="color: var(--color-accent);">₱0.00</div>
+                </div>
+                <div class="card stat-card row-clickable" onclick="setStatusFilter('Unpaid')">
+                    <h3>Bills Pending</h3>
+                    <div class="value" id="s-pending">0</div>
+                </div>
+            </div>
+
+            <div class="card print-area-hide">
+                <div class="filter-toolbar">
+                    <input type="text" id="search-box" class="form-control" placeholder="Search Bill ID, Patient..." style="max-width: 250px;">
+                    <select id="filter-status" class="form-control" style="width: auto;">
+                        <option value="All">All Statuses</option><option value="Unpaid">Unpaid</option><option value="Partial">Partial</option><option value="Paid">Paid</option><option value="Voided">Voided</option>
+                    </select>
+                    <input type="date" id="filter-dateFrom" class="form-control" style="width: auto;" placeholder="From">
+                    <input type="date" id="filter-dateTo" class="form-control" style="width: auto;" placeholder="To">
+                    <a href="#" onclick="resetFilters()" style="font-size: 14px; color: var(--color-accent); text-decoration: none; margin-left: auto;">Clear filters</a>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Bill ID</th>
+                                <th>Date</th>
+                                <th>Patient</th>
+                                <th class="num">Total</th>
+                                <th class="num">Paid</th>
+                                <th class="num">Balance</th>
+                                <th>Status</th>
+                                <th class="text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                </div>
+                <div class="pagination" id="pagination"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- NEW BILL MODAL -->
+    <div class="modal" id="new-bill-modal">
+        <div class="modal-content print-area-hide" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2>Create New Bill</h2>
+                <button class="modal-close" onclick="utils.closeModal('new-bill-modal')">&times;</button>
+            </div>
+            <div id="new-bill-alert"></div>
+            
+            <div style="display: flex; gap: 16px; align-items: flex-end; margin-bottom: 24px;">
+                <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                    <label>Patient <span class="text-danger">*</span> (Verified only)</label>
+                    <select id="nb-patient" class="form-control"></select>
+                </div>
+                <button class="btn btn-primary" onclick="loadCharges()">Load Charges</button>
+            </div>
+
+            <div class="table-responsive" style="margin-bottom: 16px;">
+                <table class="bill-table" id="nb-items-table" style="margin-bottom: 0;">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Description</th>
+                            <th style="width: 80px;">Qty</th>
+                            <th style="width: 120px;">Unit Price</th>
+                            <th class="num">Amount</th>
+                            <th class="text-right"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="nb-items-body">
+                        <tr><td colspan="6" style="text-align: center; color: var(--color-text-muted);">Select a patient and load charges.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <button class="btn btn-sm btn-outline" style="margin-bottom: 24px;" onclick="addCustomItem()">+ Add Custom Item</button>
+
+            <div class="grid grid-2" style="align-items: start;">
+                <div>
+                    <div class="form-group">
+                        <label>Discount Type</label>
+                        <select id="nb-discount" class="form-control" onchange="calcNewBillTotals()">
+                            <option value="None">None</option><option value="Senior Citizen">Senior Citizen (20%)</option><option value="PWD">PWD (20%)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Insurance Provider</label>
+                        <input type="text" id="nb-ins-prov" class="form-control" placeholder="e.g., PhilHealth">
+                    </div>
+                    <div class="form-group">
+                        <label>Insurance Coverage (PHP)</label>
+                        <input type="number" id="nb-ins-cov" class="form-control" value="0" oninput="calcNewBillTotals()">
+                    </div>
+                </div>
+                
+                <div class="totals-box">
+                    <div class="totals-row"><span>Subtotal:</span> <span id="nb-subtotal">₱0.00</span></div>
+                    <div class="totals-row" style="color: var(--color-danger);"><span>Discount:</span> <span id="nb-disc-amt">-₱0.00</span></div>
+                    <div class="totals-row" style="color: var(--color-success);"><span>Insurance:</span> <span id="nb-ins-amt">-₱0.00</span></div>
+                    <div class="totals-row grand-total"><span>Total Due:</span> <span id="nb-total">₱0.00</span></div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="utils.closeModal('new-bill-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="submitNewBill()">Create Bill</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW BILL MODAL -->
+    <div class="modal" id="view-bill-modal">
+        <div class="modal-content print-area-hide" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2>Bill Details</h2>
+                <button class="modal-close" onclick="utils.closeModal('view-bill-modal')">&times;</button>
+            </div>
+            <div id="v-alert"></div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 14px;">
+                <div>
+                    <strong>Patient:</strong> <span id="v-patient"></span><br>
+                    <strong>Date:</strong> <span id="v-date"></span>
+                </div>
+                <div style="text-align: right;">
+                    <strong>Bill ID:</strong> <span id="v-id"></span><br>
+                    <strong>Status:</strong> <span id="v-status"></span>
+                </div>
+            </div>
+
+            <div id="v-void-reason" style="display: none; color: var(--color-danger); background: var(--color-danger-bg); padding: 8px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 14px;"></div>
+
+            <div class="table-responsive" style="margin-bottom: 24px;">
+                <table class="bill-table" style="margin-bottom: 0;">
+                    <thead><tr><th>Type</th><th>Description</th><th>Qty</th><th class="num">Amount</th></tr></thead>
+                    <tbody id="v-items"></tbody>
+                </table>
+            </div>
+
+            <div class="totals-box" style="margin-bottom: 24px;">
+                <div class="totals-row"><span>Subtotal:</span> <span id="v-subtotal"></span></div>
+                <div class="totals-row" style="color: var(--color-danger);"><span>Discount (<span id="v-disc-type"></span>):</span> <span id="v-disc-amt"></span></div>
+                <div class="totals-row" style="color: var(--color-success);"><span>Insurance (<span id="v-ins-prov"></span>):</span> <span id="v-ins-amt"></span></div>
+                <div class="totals-row grand-total"><span>Total:</span> <span id="v-total"></span></div>
+                <div class="totals-row" style="color: var(--color-accent); font-weight: bold;"><span>Amount Paid:</span> <span id="v-paid"></span></div>
+                <div class="totals-row" style="color: var(--color-danger); font-weight: bold; font-size: 18px;"><span>Balance:</span> <span id="v-balance"></span></div>
+            </div>
+
+            <h3 style="margin-bottom: 8px; font-size: 16px;">Payment History</h3>
+            <div id="v-payments" style="font-size: 14px; margin-bottom: 24px;"></div>
+
+            <div class="modal-footer" style="justify-content: space-between;">
+                <button class="btn btn-outline admin-only" style="color: var(--color-danger); border-color: var(--color-danger); display: none;" id="btn-void" onclick="promptVoid()">Void Bill</button>
+                <div style="margin-left: auto; display: flex; gap: 8px;">
+                    <button class="btn btn-outline" onclick="printInvoice()">Print Invoice</button>
+                    <button class="btn btn-primary" id="btn-pay" onclick="openPayModal()">Make Payment</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PAY MODAL -->
+    <div class="modal" id="pay-modal">
+        <div class="modal-content print-area-hide" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2>Record Payment</h2>
+                <button class="modal-close" onclick="utils.closeModal('pay-modal')">&times;</button>
+            </div>
+            <div id="pay-alert"></div>
+            <input type="hidden" id="p-billId">
+            <div style="background: var(--color-bg); padding: 16px; border-radius: var(--radius-sm); margin-bottom: 24px; text-align: center;">
+                <div style="font-size: 14px; color: var(--color-text-muted);">Balance Due</div>
+                <div style="font-size: 32px; font-weight: bold; color: var(--color-danger);" id="p-balance"></div>
+            </div>
+            <div class="form-group">
+                <label>Payment Amount (PHP) <span class="text-danger">*</span></label>
+                <input type="number" id="p-amount" class="form-control" step="0.01">
+            </div>
+            <div class="form-group">
+                <label>Payment Method <span class="text-danger">*</span></label>
+                <select id="p-method" class="form-control" onchange="toggleRef()">
+                    <option value="Cash">Cash</option><option value="Credit/Debit Card">Credit/Debit Card</option><option value="GCash">GCash</option><option value="Bank Transfer">Bank Transfer</option>
+                </select>
+            </div>
+            <div class="form-group" id="p-ref-group" style="display: none;">
+                <label>Reference Number <span class="text-danger">*</span></label>
+                <input type="text" id="p-ref" class="form-control">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="utils.closeModal('pay-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="submitPayment()">Confirm Payment</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PRINTABLE RECEIPT / INVOICE (Hidden until printed) -->
+    <div class="print-area" id="print-section" style="display: none;">
+        <div style="text-align: center; border-bottom: 2px solid var(--color-primary); padding-bottom: 16px; margin-bottom: 32px;">
+            <h1 style="color: var(--color-primary); margin: 0;">PRIMECARE</h1>
+            <p style="margin: 0; font-size: 14px;">123 Rizal St., Quezon City | (02) 8123-4567</p>
+            <h2 style="margin-top: 16px; color: var(--color-text);" id="print-title">OFFICIAL RECEIPT</h2>
+        </div>
+        <div id="print-content"></div>
+        <div style="margin-top: 64px; text-align: center; font-size: 12px; color: var(--color-text-muted);">
+            This is a system-generated document.<br>PRIMECARE Hospital Information System
+        </div>
+    </div>
+
+    <script src="../js/data.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/app.js"></script>
+    <script src="../js/billing.js"></script>
+</body>
+</html>

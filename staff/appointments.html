@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Appointments - PRIMECARE</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body data-page="appointments" data-area="staff">
+
+    <div id="app-shell"></div>
+
+    <main id="page-content">
+        <div class="page-header">
+            <div>
+                <h1>Appointments</h1>
+                <p style="color: var(--color-text-muted);">Manage patient bookings and schedules.</p>
+            </div>
+            <button class="btn btn-primary admin-staff-only" style="display: none;" onclick="openNewModal()">+ New Appointment</button>
+        </div>
+
+        <div id="alert-container"></div>
+
+        <div class="card">
+            <div class="filter-toolbar">
+                <input type="text" id="search-box" class="form-control" placeholder="Search Patient, Doctor, ID..." style="max-width: 250px;">
+                <select id="filter-doc" class="form-control" style="width: auto;"><option value="All">All Doctors</option></select>
+                <select id="filter-type" class="form-control" style="width: auto;">
+                    <option value="All">All Types</option><option value="in-person">In-Person</option><option value="telehealth">Telehealth</option>
+                </select>
+                <input type="date" id="filter-date" class="form-control" style="width: auto;">
+                <button class="btn btn-outline" onclick="setDateFilter('today')">Today</button>
+                <a href="#" onclick="resetFilters()" style="font-size: 14px; color: var(--color-accent); text-decoration: none; margin-left: auto;">Clear filters</a>
+            </div>
+
+            <div class="chip-group" id="status-chips">
+                <div class="chip active" onclick="setStatusFilter('All')">All (<span id="c-all">0</span>)</div>
+                <div class="chip" onclick="setStatusFilter('Pending')">Pending (<span id="c-pen">0</span>)</div>
+                <div class="chip" onclick="setStatusFilter('Confirmed')">Confirmed (<span id="c-con">0</span>)</div>
+                <div class="chip" onclick="setStatusFilter('Completed')">Completed (<span id="c-com">0</span>)</div>
+                <div class="chip" onclick="setStatusFilter('Cancelled')">Cancelled (<span id="c-can">0</span>)</div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th class="sortable" onclick="setSort('id')">ID</th>
+                            <th class="sortable desc" onclick="setSort('datetime')">Date & Time</th>
+                            <th>Patient</th>
+                            <th>Doctor</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th class="text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body"></tbody>
+                </table>
+            </div>
+            <div class="pagination" id="pagination"></div>
+        </div>
+    </main>
+
+    <!-- NEW / RESCHEDULE MODAL -->
+    <div class="modal" id="book-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="book-title">New Appointment</h2>
+                <button class="modal-close" onclick="utils.closeModal('book-modal')">&times;</button>
+            </div>
+            <div id="book-alert-container"></div>
+            
+            <div id="book-form-area">
+                <input type="hidden" id="b-id">
+                <div class="form-group" id="b-patient-group">
+                    <label>Patient <span class="text-danger">*</span></label>
+                    <select id="b-patient" class="form-control"></select>
+                    <div class="hint">Pending/rejected patients cannot book. <a href="patient-records.html?filter=pending" style="color: var(--color-accent);">Review pending</a></div>
+                </div>
+                <div class="form-group">
+                    <label>Doctor <span class="text-danger">*</span></label>
+                    <select id="b-doctor" class="form-control" onchange="loadSlots()"></select>
+                    <div id="b-doc-info" class="hint"></div>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Date <span class="text-danger">*</span></label>
+                        <input type="date" id="b-date" class="form-control" onchange="loadSlots()">
+                    </div>
+                    <div class="form-group">
+                        <label>Type <span class="text-danger">*</span></label>
+                        <select id="b-type" class="form-control"><option value="in-person">In-Person</option><option value="telehealth">Telehealth</option></select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Available Time Slots <span class="text-danger">*</span></label>
+                    <input type="hidden" id="b-time">
+                    <div id="b-slots" class="slot-grid">
+                        <div style="grid-column: 1/-1; color: var(--color-text-muted); font-size: 14px;">Select a doctor and date to view slots.</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Reason for Visit <span class="text-danger">*</span></label>
+                    <input type="text" id="b-reason" class="form-control" placeholder="e.g., Routine checkup, Follow-up">
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-outline" onclick="utils.closeModal('book-modal')">Cancel</button>
+                    <button class="btn btn-primary" onclick="submitBooking()">Confirm Booking</button>
+                </div>
+            </div>
+
+            <div id="book-success-area" class="empty-state" style="display: none;">
+                <div style="width: 64px; height: 64px; background: var(--color-success-bg); color: var(--color-success); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; margin-bottom: 24px;">✓</div>
+                <h2 style="color: var(--color-primary); margin-bottom: 16px;">Appointment Scheduled!</h2>
+                <p id="book-success-msg" style="color: var(--color-text-muted); margin-bottom: 16px;"></p>
+                <div class="alert alert-info" style="margin-bottom: 32px;">
+                    ℹ️ The patient is notified of the confirmed appointment.
+                </div>
+                <div style="display: flex; justify-content: center; gap: 16px;">
+                    <button class="btn btn-outline" onclick="utils.closeModal('book-modal'); renderTable();">Close</button>
+                    <button class="btn btn-primary" onclick="openNewModal()">Book Another</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CANCEL MODAL -->
+    <div class="modal" id="cancel-modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2 style="color: var(--color-danger);">Cancel Appointment</h2>
+                <button class="modal-close" onclick="utils.closeModal('cancel-modal')">&times;</button>
+            </div>
+            <div id="can-alert"></div>
+            <input type="hidden" id="can-id">
+            <div class="form-group">
+                <label>Reason for Cancellation <span class="text-danger">*</span></label>
+                <textarea id="can-reason" class="form-control" rows="3" placeholder="Min 5 characters..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="utils.closeModal('cancel-modal')">Back</button>
+                <button class="btn btn-danger" onclick="submitCancel()">Confirm Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW MODAL -->
+    <div class="modal" id="view-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Appointment Details</h2>
+                <button class="modal-close" onclick="utils.closeModal('view-modal')">&times;</button>
+            </div>
+            <div class="grid grid-2" style="font-size: 14px; gap: 16px; margin-top: 16px;">
+                <div><strong>ID:</strong> <span id="v-id"></span></div>
+                <div><strong>Status:</strong> <span id="v-status"></span></div>
+                <div><strong>Date:</strong> <span id="v-date"></span></div>
+                <div><strong>Time:</strong> <span id="v-time"></span></div>
+                <div style="grid-column: 1/-1;"><strong>Patient:</strong> <span id="v-patient"></span></div>
+                <div style="grid-column: 1/-1;"><strong>Doctor:</strong> <span id="v-doctor"></span></div>
+                <div><strong>Type:</strong> <span id="v-type"></span></div>
+                <div style="grid-column: 1/-1;"><strong>Reason:</strong> <span id="v-reason"></span></div>
+                <div style="grid-column: 1/-1; color: var(--color-danger);" id="v-cancel-box"><strong>Cancel Reason:</strong> <span id="v-cancel"></span></div>
+                <div style="grid-column: 1/-1; margin-top: 16px; border-top: 1px solid var(--color-border); padding-top: 16px; font-size: 12px; color: var(--color-text-muted);">
+                    Created: <span id="v-created"></span><br>Last Updated: <span id="v-updated"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/data.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/app.js"></script>
+    <script src="../js/appointments.js"></script>
+</body>
+</html>

@@ -1,0 +1,104 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reports - PRIMECARE</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body data-page="reports" data-area="staff">
+
+    <div id="app-shell"></div>
+
+    <main id="page-content">
+        <div id="access-denied" style="display: none;" class="card print-area-hide">
+            <h2 style="color: var(--color-danger);">Access Denied</h2>
+            <p>You do not have permission to access Reports.</p>
+        </div>
+
+        <div id="reports-module" style="display: none;">
+            <div class="page-header print-area-hide">
+                <div>
+                    <h1>System Reports</h1>
+                    <p style="color: var(--color-text-muted);">Generate and export hospital analytics.</p>
+                </div>
+            </div>
+
+            <div id="alert-container" class="print-area-hide"></div>
+
+            <div class="card print-area-hide">
+                <div class="grid grid-4" style="align-items: end;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Report Type</label>
+                        <select id="r-type" class="form-control">
+                            <option value="daily-admissions">Daily Patient Admissions</option>
+                            <option value="appointments-summary">Appointments Summary</option>
+                            <option value="revenue">Revenue & Collections</option>
+                            <option value="doctor-workload">Doctor Workload</option>
+                            <option value="bed-occupancy">Bed Occupancy</option>
+                            <option value="lab-summary">Laboratory Summary</option>
+                            <option value="registrations">Patient Registrations</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Date From</label>
+                        <input type="date" id="r-from" class="form-control">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Date To</label>
+                        <input type="date" id="r-to" class="form-control">
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" style="width: 100%;" onclick="generateReport()">Generate Report</button>
+                    </div>
+                </div>
+                <div style="margin-top: 16px; display: flex; gap: 8px; font-size: 12px;">
+                    <span style="color: var(--color-text-muted);">Quick Select:</span>
+                    <a href="#" style="color: var(--color-accent); text-decoration: underline;" onclick="setRange('today')">Today</a> |
+                    <a href="#" style="color: var(--color-accent); text-decoration: underline;" onclick="setRange('week')">This Week</a> |
+                    <a href="#" style="color: var(--color-accent); text-decoration: underline;" onclick="setRange('month')">This Month</a>
+                </div>
+            </div>
+
+            <!-- REPORT OUTPUT AREA -->
+            <div class="card print-area" id="report-output" style="display: none; min-height: 500px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; border-bottom: 2px solid var(--color-border); padding-bottom: 16px;">
+                    <div>
+                        <h2 id="out-title" style="color: var(--color-primary); margin-bottom: 4px;">Report Title</h2>
+                        <div style="color: var(--color-text-muted);" id="out-dates">Period: YYYY-MM-DD to YYYY-MM-DD</div>
+                    </div>
+                    <div class="print-area-hide" style="display: flex; gap: 8px;">
+                        <button class="btn btn-outline" onclick="exportCSV()">⬇️ Export CSV</button>
+                        <button class="btn btn-primary" onclick="window.print()" title="Select 'Save as PDF' in the print dialog">🖨️ Print / PDF</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-4" id="out-summary" style="margin-bottom: 32px;">
+                    <!-- Summary Cards Injected Here -->
+                </div>
+
+                <div id="out-chart" class="report-chart" style="display: none;">
+                    <!-- Chart Injected Here -->
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table" id="out-table">
+                        <thead id="out-thead"></thead>
+                        <tbody id="out-tbody"></tbody>
+                    </table>
+                </div>
+
+                <div style="margin-top: 64px; text-align: center; font-size: 12px; color: var(--color-text-muted);" id="out-footer">
+                    Generated by Admin on Date
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="../js/data.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/app.js"></script>
+    <script src="../js/reports.js"></script>
+</body>
+</html>

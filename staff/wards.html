@@ -1,0 +1,150 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ward & Beds - PRIMECARE</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body data-page="wards" data-area="staff">
+
+    <div id="app-shell"></div>
+
+    <main id="page-content">
+        <div id="access-denied" style="display: none;" class="card print-area-hide">
+            <h2 style="color: var(--color-danger);">Access Denied</h2>
+            <p>You do not have permission to access Ward & Beds.</p>
+        </div>
+
+        <div id="ward-module" style="display: none;">
+            <div class="page-header print-area-hide">
+                <div>
+                    <h1>Ward & Beds</h1>
+                    <p style="color: var(--color-text-muted);">Manage hospital admissions and bed occupancy.</p>
+                </div>
+            </div>
+
+            <div id="alert-container" class="print-area-hide"></div>
+
+            <div class="tabs print-area-hide">
+                <button class="tab-btn active" onclick="switchTab('beds')">Bed Management</button>
+                <button class="tab-btn" onclick="switchTab('admissions')">Admissions List</button>
+            </div>
+
+            <!-- BED MANAGEMENT TAB -->
+            <div id="tab-beds" class="tab-content active">
+                <div class="card" style="display: flex; justify-content: space-around; padding: 24px; margin-bottom: 24px;">
+                    <div style="text-align: center; color: var(--color-text-muted);">Total Beds<br><strong style="font-size: 24px; color: var(--color-primary);" id="t-total">0</strong></div>
+                    <div style="text-align: center; color: var(--color-text-muted);">Occupied<br><strong style="font-size: 24px; color: var(--color-info);" id="t-occ">0</strong></div>
+                    <div style="text-align: center; color: var(--color-text-muted);">Available<br><strong style="font-size: 24px; color: var(--color-success);" id="t-avail">0</strong></div>
+                    <div style="text-align: center; color: var(--color-text-muted);">Maintenance<br><strong style="font-size: 24px; color: var(--color-text-muted);" id="t-maint">0</strong></div>
+                </div>
+
+                <div class="grid grid-3" id="ward-cards" style="margin-bottom: 32px;">
+                    <!-- Injected via JS -->
+                </div>
+
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h3 style="color: var(--color-primary);">Bed Map</h3>
+                        <select id="filter-ward" class="form-control" style="width: auto;" onchange="renderBeds()">
+                            <option value="All">All Wards</option>
+                        </select>
+                    </div>
+                    <div class="bed-grid" id="bed-grid">
+                        <!-- Injected via JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- ADMISSIONS TAB -->
+            <div id="tab-admissions" class="tab-content">
+                <div class="card">
+                    <div class="filter-toolbar">
+                        <select id="filter-adm-status" class="form-control" style="width: auto;" onchange="renderAdmissions()">
+                            <option value="All">All Admissions</option><option value="Admitted" selected>Currently Admitted</option><option value="Discharged">Discharged</option>
+                        </select>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Patient</th>
+                                    <th>Ward / Bed</th>
+                                    <th>Attending Doctor</th>
+                                    <th>Admit Date</th>
+                                    <th>Discharge Date</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adm-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- BED ACTION MODAL -->
+    <div class="modal" id="bed-modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2 id="bm-title">Bed Action</h2>
+                <button class="modal-close" onclick="utils.closeModal('bed-modal')">&times;</button>
+            </div>
+            <div id="bed-alert"></div>
+            <input type="hidden" id="bm-bedId">
+            <input type="hidden" id="bm-admId">
+
+            <div id="bm-info" style="background: var(--color-bg); padding: 16px; border-radius: var(--radius-sm); margin-bottom: 24px; font-size: 14px; border: 1px solid var(--color-border);"></div>
+
+            <!-- Available Bed Actions -->
+            <div id="bm-available-actions" style="display: none;">
+                <div class="form-group">
+                    <label>Admit Patient <span class="text-danger">*</span> (Verified, Outpatient only)</label>
+                    <select id="bm-patient" class="form-control"></select>
+                </div>
+                <div class="form-group">
+                    <label>Attending Doctor <span class="text-danger">*</span></label>
+                    <select id="bm-doctor" class="form-control"></select>
+                </div>
+                <div class="modal-footer" style="justify-content: space-between;">
+                    <button class="btn btn-outline admin-nurse-only" onclick="setStatus('Maintenance')">Set to Maintenance</button>
+                    <button class="btn btn-primary admin-nurse-only" onclick="submitAdmit()">Admit Patient</button>
+                </div>
+            </div>
+
+            <!-- Occupied Bed Actions -->
+            <div id="bm-occupied-actions" style="display: none;">
+                <div class="form-group">
+                    <label>Transfer to New Bed</label>
+                    <div style="display: flex; gap: 8px;">
+                        <select id="bm-transfer-bed" class="form-control"></select>
+                        <button class="btn btn-outline admin-nurse-only" onclick="submitTransfer()">Transfer</button>
+                    </div>
+                </div>
+                <hr style="border: 0; border-top: 1px solid var(--color-border); margin: 24px 0;">
+                <div class="form-group">
+                    <label style="color: var(--color-danger);">Discharge Summary <span class="text-danger">*</span></label>
+                    <textarea id="bm-discharge-summary" class="form-control" rows="3" placeholder="Min 10 characters..."></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-danger admin-nurse-only" onclick="submitDischarge()">Discharge Patient</button>
+                </div>
+            </div>
+
+            <!-- Maintenance Bed Actions -->
+            <div id="bm-maintenance-actions" style="display: none; text-align: center; padding: 16px 0;">
+                <p style="margin-bottom: 24px; color: var(--color-text-muted);">This bed is currently under maintenance or cleaning.</p>
+                <button class="btn btn-success admin-nurse-only" onclick="setStatus('Available')">Set as Available</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/data.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/app.js"></script>
+    <script src="../js/wards.js"></script>
+</body>
+</html>

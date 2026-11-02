@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Home - PRIMECARE</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body data-page="home" data-area="patient">
+
+    <div id="app-shell"></div>
+
+    <main id="page-content">
+        <div id="status-banner"></div>
+
+        <!-- Fix: Removed blinding neon gradient, replaced with professional primary dark -->
+        <div class="card" style="background: var(--color-primary-dark); color: white; border: none; padding: 32px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+                <div>
+                    <h2 id="welcome-msg" style="color: white; font-size: 28px; margin-bottom: 8px;">Welcome!</h2>
+                    <p style="margin: 0; opacity: 0.9; font-size: 14px;">Patient ID: <span id="p-id"></span> | Status: <span id="p-status"></span></p>
+                </div>
+                <a href="book-appointment.html" class="btn" style="background: white; color: var(--color-primary); font-weight: bold;">Book Appointment</a>
+            </div>
+        </div>
+
+        <div class="grid grid-2">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                    <h3 style="color: var(--color-primary); margin: 0;">Next Appointment</h3>
+                    <a href="book-appointment.html?tab=my" style="font-size: 14px; color: var(--color-accent); text-decoration: none; font-weight: 500;">View All &rarr;</a>
+                </div>
+                <div id="next-appt">
+                    <!-- Injected via JS -->
+                </div>
+            </div>
+
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                    <h3 style="color: var(--color-primary); margin: 0;">Unpaid Balance</h3>
+                    <a href="my-bills.html" style="font-size: 14px; color: var(--color-accent); text-decoration: none; font-weight: 500;">View Bills &rarr;</a>
+                </div>
+                <div style="text-align: center; padding: 24px 0;">
+                    <div style="font-size: 48px; font-weight: bold; color: var(--color-danger);" id="unpaid-bal">₱0.00</div>
+                    <a href="my-bills.html?status=unpaid" class="btn btn-primary" style="margin-top: 24px;">Pay Now</a>
+                </div>
+            </div>
+
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                    <h3 style="color: var(--color-primary); margin: 0;">Latest Lab Results</h3>
+                    <a href="my-records.html?tab=labs" style="font-size: 14px; color: var(--color-accent); text-decoration: none; font-weight: 500;">View All &rarr;</a>
+                </div>
+                <div id="latest-labs" style="display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Injected via JS -->
+                </div>
+            </div>
+
+            <div class="card">
+                <h3 style="color: var(--color-primary); margin-bottom: 24px;">Quick Actions</h3>
+                <div class="grid grid-2" style="gap: 16px;">
+                    <!-- Injected via JS -->
+                </div>
+                
+                <div style="margin-top: 24px; background: var(--color-danger-bg); border: 1px solid var(--color-danger); padding: 20px; border-radius: var(--radius-md); text-align: center;">
+                    <strong style="color: var(--color-danger); font-size: 16px;">Emergency? Call (02) 8123-4567</strong><br>
+                    <span style="font-size: 14px; color: var(--color-text-muted); display: block; margin-top: 8px;">Open 24/7. Proceed to the nearest ER immediately.</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="../js/data.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/app.js"></script>
+    <script src="../js/patient-home.js"></script>
+</body>
+</html>

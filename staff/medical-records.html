@@ -1,0 +1,167 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical Records - PRIMECARE</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body data-page="medical-records" data-area="staff">
+
+    <div id="app-shell"></div>
+
+    <main id="page-content">
+        <div id="access-denied" style="display: none;" class="card print-area-hide">
+            <h2 style="color: var(--color-danger);">Access Denied</h2>
+            <p>You do not have permission to access Medical Records.</p>
+        </div>
+
+        <div id="records-module" style="display: none;">
+            <div class="page-header print-area-hide">
+                <div>
+                    <h1>Medical Records</h1>
+                    <p style="color: var(--color-text-muted);">View and update patient charts.</p>
+                </div>
+            </div>
+
+            <div class="grid" style="grid-template-columns: 300px 1fr; gap: 24px; align-items: start;">
+                
+                <!-- Left Panel: Patient List -->
+                <div class="card print-area-hide" style="height: calc(100vh - 150px); display: flex; flex-direction: column; padding: 16px;">
+                    <input type="text" id="search-patient" class="form-control" placeholder="Search patient..." style="margin-bottom: 16px;">
+                    <div id="patient-list" style="overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 8px;">
+                        <!-- Injected via JS -->
+                    </div>
+                </div>
+
+                <!-- Right Panel: Patient Chart -->
+                <div class="card print-area" id="patient-chart" style="display: none; min-height: calc(100vh - 150px);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+                        <div>
+                            <h2 id="c-name" style="color: var(--color-primary); margin-bottom: 4px; font-size: 24px;"></h2>
+                            <div style="font-size: 14px; color: var(--color-text-muted);">
+                                ID: <span id="c-id"></span> | Age: <span id="c-age"></span> | Sex: <span id="c-sex"></span> | Blood Type: <span id="c-blood"></span>
+                            </div>
+                            <div style="font-size: 14px; color: var(--color-text-muted); margin-top: 4px;">
+                                <strong>Location:</strong> <span id="c-location"></span> | <strong>Attending:</strong> <span id="c-doctor"></span>
+                            </div>
+                        </div>
+                        <div class="print-area-hide" style="display: flex; gap: 8px;">
+                            <button class="btn btn-outline" onclick="window.print()">🖨️ Print Summary</button>
+                            <button class="btn btn-primary doc-admin-only" onclick="openRecordModal()">+ New Record</button>
+                        </div>
+                    </div>
+
+                    <div id="c-allergy-banner" class="allergy-alert" style="display: none;">
+                        ⚠️ <strong>ALLERGY ALERT:</strong> <span id="c-allergies" style="margin-left: 8px;"></span>
+                    </div>
+                    <div id="c-conditions" style="font-size: 14px; color: var(--color-warning); font-weight: 600; margin-bottom: 24px; display: none;">
+                        Chronic Conditions: <span id="c-cond-text"></span>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h3 style="color: var(--color-primary);">Latest Vitals</h3>
+                        <button class="btn btn-sm btn-outline print-area-hide" onclick="openVitalsModal()">Record Vitals</button>
+                    </div>
+                    <div class="vitals-grid">
+                        <div class="vital-card"><div class="label">BP</div><div class="value" id="v-bp">--</div><div class="unit">mmHg</div></div>
+                        <div class="vital-card"><div class="label">Heart Rate</div><div class="value" id="v-hr">--</div><div class="unit">bpm</div></div>
+                        <div class="vital-card"><div class="label">Temp</div><div class="value" id="v-temp">--</div><div class="unit">°C</div></div>
+                        <div class="vital-card"><div class="label">SpO2</div><div class="value" id="v-spo2">--</div><div class="unit">%</div></div>
+                        <div class="vital-card"><div class="label">Weight</div><div class="value" id="v-weight">--</div><div class="unit">kg</div></div>
+                        <div class="vital-card"><div class="label">BMI</div><div class="value" id="v-bmi">--</div><div class="unit">kg/m²</div></div>
+                    </div>
+
+                    <div class="tabs print-area-hide" style="margin-top: 32px; border-bottom: none;">
+                        <button class="tab-btn active" onclick="switchChartTab('visits')">Visits & Diagnoses</button>
+                        <button class="tab-btn" onclick="switchChartTab('rx')">Prescriptions</button>
+                        <button class="tab-btn" onclick="switchChartTab('labs')">Lab Results</button>
+                        <button class="tab-btn" onclick="switchChartTab('history')">Update History</button>
+                    </div>
+
+                    <div id="tab-visits" class="tab-content active">
+                        <div class="timeline" id="chart-visits"></div>
+                    </div>
+                    <div id="tab-rx" class="tab-content">
+                        <div class="list-group" id="chart-rx"></div>
+                    </div>
+                    <div id="tab-labs" class="tab-content">
+                        <div class="list-group" id="chart-labs"></div>
+                    </div>
+                    <div id="tab-history" class="tab-content">
+                        <div class="timeline" id="chart-history"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- VITALS MODAL -->
+    <div class="modal" id="vitals-modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Record Vitals</h2>
+                <button class="modal-close" onclick="utils.closeModal('vitals-modal')">&times;</button>
+            </div>
+            <div id="vitals-alert"></div>
+            <div class="form-grid">
+                <div class="form-group"><label>Blood Pressure (SYS/DIA)</label><input type="text" id="i-bp" class="form-control" placeholder="120/80"></div>
+                <div class="form-group"><label>Heart Rate (bpm)</label><input type="number" id="i-hr" class="form-control"></div>
+                <div class="form-group"><label>Temperature (°C)</label><input type="number" step="0.1" id="i-temp" class="form-control"></div>
+                <div class="form-group"><label>SpO2 (%)</label><input type="number" id="i-spo2" class="form-control"></div>
+                <div class="form-group"><label>Weight (kg)</label><input type="number" step="0.1" id="i-weight" class="form-control"></div>
+                <div class="form-group"><label>Height (cm)</label><input type="number" step="0.1" id="i-height" class="form-control"></div>
+                <div class="form-group"><label>Resp Rate (cpm)</label><input type="number" id="i-resp" class="form-control"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="utils.closeModal('vitals-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveVitals()">Save Vitals</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- RECORD MODAL -->
+    <div class="modal" id="record-modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2 id="rm-title">New Medical Record</h2>
+                <button class="modal-close" onclick="utils.closeModal('record-modal')">&times;</button>
+            </div>
+            <div id="record-alert"></div>
+            <input type="hidden" id="rm-id">
+            <div class="form-group">
+                <label>Chief Complaint</label>
+                <input type="text" id="rm-complaint" class="form-control">
+            </div>
+            <div class="form-group">
+                <label>Diagnosis <span class="text-danger">*</span></label>
+                <input type="text" id="rm-diagnosis" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>Treatment Notes <span class="text-danger">*</span></label>
+                <textarea id="rm-treatment" class="form-control" rows="4" required></textarea>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Follow-up Date</label>
+                    <input type="date" id="rm-followup" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Attending Doctor</label>
+                    <select id="rm-doctor" class="form-control"></select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="utils.closeModal('record-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveRecord()">Save Record</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/data.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/app.js"></script>
+    <script src="../js/medical-records.js"></script>
+</body>
+</html>

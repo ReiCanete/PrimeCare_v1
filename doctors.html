@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Find a Doctor - PRIMECARE</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="doctors" data-area="public">
+
+    <div id="public-nav"></div>
+
+    <main style="padding: 2rem; max-width: 1200px; margin: 0 auto;">
+        <h1 class="page-title-lg">Find a Doctor</h1>
+        
+        <div class="filter-bar">
+            <input type="text" id="filter-keyword" class="form-control" placeholder="Search by name or specialty...">
+            <select id="filter-specialty" class="form-control">
+                <option value="">All Specialties</option>
+                <option value="Cardiology">Cardiology</option>
+                <option value="Pediatrics">Pediatrics</option>
+                <option value="Dermatology">Dermatology</option>
+                <option value="Neurology">Neurology</option>
+                <option value="Ophthalmology">Ophthalmology</option>
+            </select>
+            <select id="filter-language" class="form-control">
+                <option value="">All Languages</option>
+                <option value="English">English</option>
+                <option value="Tagalog">Tagalog</option>
+                <option value="Spanish">Spanish</option>
+            </select>
+            <select id="filter-insurance" class="form-control">
+                <option value="">All Insurances</option>
+                <option value="PhilHealth">PhilHealth</option>
+                <option value="Maxicare">Maxicare</option>
+                <option value="Intellicare">Intellicare</option>
+                <option value="Medicard">Medicard</option>
+            </select>
+        </div>
+
+        <div id="doctors-grid" class="grid grid-3">
+            <!-- Doctors injected here -->
+        </div>
+    </main>
+
+    <div id="public-footer"></div>
+
+    <script src="js/data.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/public.js"></script>
+    <script>
+        async function renderDoctors() {
+            const filters = {
+                keyword: document.getElementById('filter-keyword').value,
+                specialization: document.getElementById('filter-specialty').value,
+                language: document.getElementById('filter-language').value,
+                insurance: document.getElementById('filter-insurance').value
+            };
+
+            const doctors = await safeCall('searchDoctors', filters);
+            const grid = document.getElementById('doctors-grid');
+            
+            if (!doctors || doctors.length === 0) {
+                grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 3rem; color: var(--text-muted);">No doctors found matching your criteria.</div>`;
+                return;
+            }
+
+            grid.innerHTML = doctors.map(doc => `
+                <div class="card doctor-card">
+                    <div style="display: flex; gap: 1rem; align-items: center;">
+                        <div class="doctor-avatar">${doc.photoInitials || 'DR'}</div>
+                        <div>
+                            <h3 style="color: var(--navy);">${utils.formatDoctorName(doc.name)}</h3>
+                            <div style="font-size: 0.875rem; color: var(--text-muted);">${doc.qualifications}</div>
+                        </div>
+                    </div>
+                    <div>
+                        <strong>Specialty:</strong> ${doc.specialization}<br>
+                        <strong>Schedule:</strong> ${Array.isArray(doc.schedule) ? doc.schedule.map(s=>s.day).join(', ') : doc.schedule}
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        ${(doc.acceptedInsurance || []).map(ins => `<span class="badge badge-info">${ins}</span>`).join('')}
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--border);">
+                        <span class="badge ${doc.status === 'active' ? 'badge-success' : 'badge-danger'}">${doc.status === 'active' ? 'Available' : 'Unavailable'}</span>
+                        <a href="login.html" class="btn btn-primary">Book</a>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderDoctors();
+            document.querySelectorAll('.filter-bar input, .filter-bar select').forEach(el => {
+                el.addEventListener('input', renderDoctors);
+            });
+        });
+    </script>
+</body>
+</html>

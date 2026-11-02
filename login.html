@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log In - PRIMECARE</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="login" data-area="auth">
+
+    <div class="auth-layout">
+        <div class="auth-sidebar" style="background: var(--color-primary-dark);">
+            <a href="index.html" style="text-decoration: none; color: white; display: flex; align-items: center; font-size: 32px; font-weight: 800; margin-bottom: 24px;">
+                <img src="assets/primecare.png" alt="Logo" style="height: 48px; margin-right: 16px; object-fit: contain; filter: brightness(0) invert(1);">
+                PRIME<span style="color: var(--color-accent-light);">CARE</span>
+            </a>
+            <h2 style="font-size: 40px; margin-bottom: 16px; color: white;">Welcome Back.</h2>
+            <p style="font-size: 18px; opacity: 0.9; max-width: 400px; line-height: 1.6;">Log in to access your patient portal, view medical records, and manage appointments securely.</p>
+        </div>
+        
+        <div class="auth-content">
+            <div class="auth-box">
+                <div style="margin-bottom: 32px;">
+                    <a href="index.html" style="color: var(--color-text-muted); text-decoration: none; font-size: 14px; font-weight: 500;">&larr; Back to Home</a>
+                    <h1 style="margin-top: 16px; color: var(--color-primary);">Log In</h1>
+                </div>
+
+                <div id="alert-container"></div>
+
+                <form id="login-form">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <div style="position: relative;">
+                            <input type="password" id="password" class="form-control" required>
+                            <button type="button" id="toggle-password" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 16px; color: var(--color-text-muted);">👁️</button>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; justify-content: flex-end; margin-bottom: 24px;">
+                        <a href="forgot-password.html" style="font-size: 14px; color: var(--color-accent); text-decoration: none; font-weight: 600;">Forgot password?</a>
+                    </div>
+
+                    <button type="submit" id="login-btn" class="btn btn-primary" style="width: 100%; height: 48px; font-size: 16px;">Log In</button>
+                </form>
+
+                <div style="text-align: center; margin-top: 32px; font-size: 14px;">
+                    Don't have an account? <a href="register.html" style="color: var(--color-accent); font-weight: 600; text-decoration: none;">Sign up here</a>
+                </div>
+
+                <!-- REMOVE BEFORE FINAL SUBMISSION -->
+                <div class="demo-box">
+                    <strong style="color: var(--color-warning);">🛠️ For Testing Only (Demo Credentials):</strong><br>
+                    <ul style="margin-top: 8px; padding-left: 24px; line-height: 1.6;">
+                        <li>Admin: <code>admin</code> / <code>password123</code></li>
+                        <li>Doctor: <code>doctor</code> / <code>password123</code></li>
+                        <li>Nurse: <code>nurse</code> / <code>password123</code></li>
+                        <li>Staff: <code>staff</code> / <code>password123</code></li>
+                        <li>Patient (Verified): <code>patient</code> / <code>password123</code></li>
+                        <li>Patient (Pending): <code>patient2</code> / <code>password123</code></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/data.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/auth.js"></script>
+</body>
+</html>

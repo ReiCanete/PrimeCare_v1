@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>e-Prescriptions - PRIMECARE</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body data-page="prescriptions" data-area="staff">
+
+    <div id="app-shell"></div>
+
+    <main id="page-content">
+        <div id="access-denied" style="display: none;" class="card print-area-hide">
+            <h2 style="color: var(--color-danger);">Access Denied</h2>
+            <p>You do not have permission to access e-Prescriptions.</p>
+        </div>
+
+        <div id="rx-module" style="display: none;">
+            <div class="page-header print-area-hide">
+                <div>
+                    <h1>e-Prescriptions</h1>
+                    <p style="color: var(--color-text-muted);">Manage patient prescriptions and medications.</p>
+                </div>
+                <button class="btn btn-primary doc-admin-only" onclick="openNewRxModal()">+ New Prescription</button>
+            </div>
+
+            <div id="alert-container" class="print-area-hide"></div>
+
+            <div class="card print-area-hide">
+                <div class="filter-toolbar">
+                    <input type="text" id="search-box" class="form-control" placeholder="Search Patient, Meds, ID..." style="max-width: 250px;">
+                    <select id="filter-status" class="form-control" style="width: auto;">
+                        <option value="All">All Statuses</option><option value="Active">Active</option><option value="Dispensed">Dispensed</option><option value="Cancelled">Cancelled</option>
+                    </select>
+                    <select id="filter-doc" class="form-control" style="width: auto;"><option value="All">All Doctors</option></select>
+                    <a href="#" onclick="resetFilters()" style="font-size: 14px; color: var(--color-accent); text-decoration: none; margin-left: auto;">Clear filters</a>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>RX ID</th>
+                                <th>Date</th>
+                                <th>Patient</th>
+                                <th>Doctor</th>
+                                <th>Medicines</th>
+                                <th>Status</th>
+                                <th class="text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                </div>
+                <div class="pagination" id="pagination"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- NEW RX MODAL -->
+    <div class="modal" id="new-rx-modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2>New Prescription</h2>
+                <button class="modal-close" onclick="utils.closeModal('new-rx-modal')">&times;</button>
+            </div>
+            <div id="rx-alert"></div>
+            
+            <div class="form-group">
+                <label>Patient <span class="text-danger">*</span></label>
+                <select id="rx-patient" class="form-control" onchange="checkPatientAllergies()"></select>
+            </div>
+            
+            <div id="rx-allergy-banner" class="allergy-alert" style="display: none;">
+                ⚠️ <strong>ALLERGY ALERT:</strong> <span id="rx-allergies-text" style="margin-left: 8px;"></span>
+            </div>
+
+            <div id="rx-conflict-box" style="display: none; background: var(--color-danger-bg); border: 1px solid var(--color-danger); padding: 16px; border-radius: var(--radius-sm); margin-bottom: 16px;">
+                <h4 style="color: var(--color-danger); margin-bottom: 8px;">Allergy Conflict Detected!</h4>
+                <p style="font-size: 14px; margin-bottom: 16px; color: var(--color-text);">The following medicines conflict with the patient's allergies: <strong id="rx-conflict-meds"></strong></p>
+                <div class="form-group">
+                    <label style="color: var(--color-danger);">Reason for Override <span class="text-danger">*</span></label>
+                    <input type="text" id="rx-override-reason" class="form-control" placeholder="Min 10 characters...">
+                </div>
+                <div style="display: flex; gap: 16px;">
+                    <button class="btn btn-danger" onclick="submitRx(true)">Override and Save</button>
+                    <button class="btn btn-outline" onclick="document.getElementById('rx-conflict-box').style.display='none'">Cancel</button>
+                </div>
+            </div>
+
+            <h3 style="margin: 24px 0 16px; border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">Medicines</h3>
+            <div id="rx-items-container" style="display: flex; flex-direction: column; gap: 16px;">
+                <!-- Items injected here -->
+            </div>
+            <button class="btn btn-sm btn-outline" style="margin-top: 16px;" onclick="addRxItem()">+ Add Medicine</button>
+
+            <div class="form-group" style="margin-top: 24px;">
+                <label>Additional Notes</label>
+                <input type="text" id="rx-notes" class="form-control">
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="utils.closeModal('new-rx-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="submitRx(false)">Save Prescription</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PRINT MODAL -->
+    <div class="modal" id="print-modal">
+        <div class="modal-content print-area" style="max-width: 600px;">
+            <div class="modal-header print-area-hide">
+                <h2>Prescription Details</h2>
+                <button class="modal-close" onclick="utils.closeModal('print-modal')">&times;</button>
+            </div>
+            
+            <!-- Printable Content -->
+            <div style="padding: 32px; background: white; color: black; border: 1px solid #ccc; border-radius: 8px;">
+                <div style="text-align: center; border-bottom: 2px solid var(--color-primary); padding-bottom: 16px; margin-bottom: 32px;">
+                    <h1 style="color: var(--color-primary); margin: 0;">PRIMECARE</h1>
+                    <p style="margin: 0; font-size: 14px;">123 Rizal St., Quezon City | (02) 8123-4567</p>
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; margin-bottom: 32px; font-size: 14px;">
+                    <div>
+                        <strong>Patient:</strong> <span id="p-patient"></span><br>
+                        <strong>Age/Sex:</strong> <span id="p-agesex"></span>
+                    </div>
+                    <div style="text-align: right;">
+                        <strong>Date:</strong> <span id="p-date"></span><br>
+                        <strong>RX ID:</strong> <span id="p-id"></span>
+                    </div>
+                </div>
+
+                <div style="font-size: 32px; font-family: serif; font-weight: bold; margin-bottom: 16px;">Rx</div>
+                
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 32px;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #ccc; text-align: left;">
+                            <th style="padding: 8px 0;">Medicine</th>
+                            <th>Dosage</th>
+                            <th>Sig (Frequency & Duration)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="p-items"></tbody>
+                </table>
+
+                <div style="font-size: 14px; margin-bottom: 64px;">
+                    <strong>Notes:</strong> <span id="p-notes"></span>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end;">
+                    <div style="text-align: center; width: 200px;">
+                        <div style="border-bottom: 1px solid black; margin-bottom: 8px; height: 40px;"></div>
+                        <strong><span id="p-doctor"></span></strong><br>
+                        <span style="font-size: 12px;" id="p-doc-details"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer print-area-hide">
+                <button class="btn btn-primary" onclick="window.print()">🖨️ Print</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/data.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/app.js"></script>
+    <script src="../js/prescriptions.js"></script>
+</body>
+</html>

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Bills - PRIMECARE</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body data-page="my-bills" data-area="patient">
+
+    <div id="app-shell"></div>
+
+    <main id="page-content">
+        <div class="page-header">
+            <div>
+                <h1>My Bills & Payments</h1>
+                <p style="color: var(--color-text-muted);">View invoices, make online payments, and check insurance claims.</p>
+            </div>
+        </div>
+
+        <div id="alert-container"></div>
+
+        <div class="grid grid-3 print-area-hide" style="margin-bottom: 24px;">
+            <div class="card stat-card">
+                <h3>Total Balance Due</h3>
+                <div class="value" id="s-balance" style="color: var(--color-danger);">₱0.00</div>
+            </div>
+            <div class="card stat-card">
+                <h3>Total Paid</h3>
+                <div class="value" id="s-paid" style="color: var(--color-success);">₱0.00</div>
+            </div>
+            <div class="card stat-card">
+                <h3>Open Bills</h3>
+                <div class="value" id="s-open">0</div>
+            </div>
+        </div>
+
+        <div class="tabs print-area-hide">
+            <button class="tab-btn active" onclick="switchTab('bills')">Bills</button>
+            <button class="tab-btn" onclick="switchTab('receipts')">Receipts</button>
+            <button class="tab-btn" onclick="switchTab('insurance')">Insurance</button>
+        </div>
+
+        <!-- BILLS TAB -->
+        <div id="tab-bills" class="tab-content active card">
+            <div class="filter-toolbar">
+                <select id="filter-status" class="form-control" style="width: auto;" onchange="renderBills()">
+                    <option value="All">All Statuses</option><option value="Unpaid">Unpaid</option><option value="Partial">Partial</option><option value="Paid">Paid</option>
+                </select>
+            </div>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Bill ID</th>
+                            <th>Date</th>
+                            <th class="num">Total</th>
+                            <th class="num">Paid</th>
+                            <th class="num">Balance</th>
+                            <th>Status</th>
+                            <th class="text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bills-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- RECEIPTS TAB -->
+        <div id="tab-receipts" class="tab-content card">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Receipt No</th>
+                            <th>Date</th>
+                            <th>Bill ID</th>
+                            <th>Method</th>
+                            <th class="num">Amount</th>
+                            <th class="text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="receipts-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- INSURANCE TAB -->
+        <div id="tab-insurance" class="tab-content card">
+            <div style="background: var(--color-bg); padding: 24px; border-radius: var(--radius-md); margin-bottom: 24px; border: 1px solid var(--color-border);">
+                <h3 style="color: var(--color-primary); margin-bottom: 8px;">My Insurance Details</h3>
+                <div class="grid grid-2">
+                    <div><strong>Provider:</strong> <span id="ins-prov"></span></div>
+                    <div><strong>Policy/ID Number:</strong> <span id="ins-num"></span></div>
+                </div>
+                <p style="font-size: 14px; color: var(--color-text-muted); margin-top: 16px;">Note: Insurance claims are processed by the hospital billing office. The amounts below reflect the coverage applied to your bills.</p>
+            </div>
+            <h3 style="margin-bottom: 16px;">Applied Coverage</h3>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead><tr><th>Bill ID</th><th>Date</th><th class="num">Covered Amount</th></tr></thead>
+                    <tbody id="ins-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- VIEW BILL MODAL -->
+    <div class="modal" id="view-bill-modal">
+        <div class="modal-content print-area-hide" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2>Bill Details</h2>
+                <button class="modal-close" onclick="utils.closeModal('view-bill-modal')">&times;</button>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 14px;">
+                <div><strong>Date:</strong> <span id="v-date"></span></div>
+                <div style="text-align: right;"><strong>Bill ID:</strong> <span id="v-id"></span><br><strong>Status:</strong> <span id="v-status"></span></div>
+            </div>
+
+            <div class="table-responsive" style="margin-bottom: 24px;">
+                <table class="bill-table" style="margin-bottom: 0;">
+                    <thead><tr><th>Description</th><th>Qty</th><th class="num">Amount</th></tr></thead>
+                    <tbody id="v-items"></tbody>
+                </table>
+            </div>
+
+            <div class="totals-box" style="margin-bottom: 24px;">
+                <div class="totals-row"><span>Subtotal:</span> <span id="v-subtotal"></span></div>
+                <div class="totals-row" style="color: var(--color-danger);"><span>Discount (<span id="v-disc-type"></span>):</span> <span id="v-disc-amt"></span></div>
+                <div class="totals-row" style="color: var(--color-success);"><span>Insurance:</span> <span id="v-ins-amt"></span></div>
+                <div class="totals-row grand-total"><span>Total:</span> <span id="v-total"></span></div>
+                <div class="totals-row" style="color: var(--color-accent); font-weight: bold;"><span>Amount Paid:</span> <span id="v-paid"></span></div>
+                <div class="totals-row" style="color: var(--color-danger); font-weight: bold; font-size: 18px;"><span>Balance:</span> <span id="v-balance"></span></div>
+            </div>
+
+            <h3 style="margin-bottom: 8px; font-size: 16px;">Payment History</h3>
+            <div id="v-payments" style="font-size: 14px; margin-bottom: 24px;"></div>
+
+            <div class="modal-footer" style="justify-content: space-between;">
+                <button class="btn btn-outline" id="btn-plan" onclick="openPlanModal()">Request Payment Plan</button>
+                <div style="margin-left: auto; display: flex; gap: 8px;">
+                    <button class="btn btn-outline" onclick="printInvoice()">Print Invoice</button>
+                    <button class="btn btn-primary" id="btn-pay" onclick="openPayModal()">Pay Online</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PAY MODAL (Simulated Gateway) -->
+    <div class="modal" id="pay-modal">
+        <div class="modal-content print-area-hide" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Secure Online Payment</h2>
+                <button class="modal-close" onclick="utils.closeModal('pay-modal')">&times;</button>
+            </div>
+            <div id="pay-alert"></div>
+            <input type="hidden" id="p-billId">
+            
+            <div class="alert alert-info" style="margin-bottom: 16px;">
+                🛠️ <strong>Demo Mode:</strong> No real money is charged. Use any valid-looking card. Use <code>4000 0000 0000 0002</code> to simulate a declined card.
+            </div>
+
+            <div style="text-align: center; margin-bottom: 24px;">
+                <div style="font-size: 14px; color: var(--color-text-muted);">Balance Due</div>
+                <div style="font-size: 32px; font-weight: bold; color: var(--color-danger);" id="p-balance"></div>
+            </div>
+
+            <div class="form-group">
+                <label>Payment Amount (PHP) <span class="text-danger">*</span></label>
+                <input type="number" id="p-amount" class="form-control" step="0.01">
+            </div>
+
+            <label style="display: block; margin-bottom: 8px; font-weight: 600; font-size: 13px; color: var(--color-primary);">Select Payment Method</label>
+            <div class="grid grid-2" style="margin-bottom: 24px;">
+                <div class="payment-tile active" id="tile-card" onclick="selectMethod('Credit/Debit Card')">💳 Credit/Debit Card</div>
+                <div class="payment-tile" id="tile-gcash" onclick="selectMethod('GCash')">📱 GCash</div>
+            </div>
+            <input type="hidden" id="p-method" value="Credit/Debit Card">
+
+            <!-- Card Fields -->
+            <div id="form-card">
+                <div class="form-group"><label>Card Number <span class="text-danger">*</span></label><input type="text" id="p-card-num" class="form-control" placeholder="0000 0000 0000 0000" maxlength="19"></div>
+                <div class="form-grid">
+                    <div class="form-group"><label>Expiry Date <span class="text-danger">*</span></label><input type="text" id="p-card-exp" class="form-control" placeholder="MM/YY" maxlength="5"></div>
+                    <div class="form-group"><label>CVV <span class="text-danger">*</span></label><input type="password" id="p-card-cvv" class="form-control" placeholder="123" maxlength="4"></div>
+                </div>
+                <div class="form-group"><label>Name on Card <span class="text-danger">*</span></label><input type="text" id="p-card-name" class="form-control"></div>
+            </div>
+
+            <!-- GCash Fields -->
+            <div id="form-gcash" style="display: none;">
+                <div class="form-group"><label>GCash Mobile Number <span class="text-danger">*</span></label><input type="text" id="p-gcash-num" class="form-control" placeholder="09XXXXXXXXX" maxlength="11"></div>
+            </div>
+
+            <div id="pay-processing" style="display: none; text-align: center; padding: 16px; color: var(--color-accent); font-weight: bold;">
+                Processing payment... Please wait.
+            </div>
+
+            <div class="modal-footer" id="pay-actions">
+                <button class="btn btn-outline" onclick="utils.closeModal('pay-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="submitPayment()">Pay Now</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PAYMENT PLAN MODAL -->
+    <div class="modal" id="plan-modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2>Request Payment Plan</h2>
+                <button class="modal-close" onclick="utils.closeModal('plan-modal')">&times;</button>
+            </div>
+            <div id="plan-alert"></div>
+            <input type="hidden" id="pl-billId">
+            <p style="font-size: 14px; color: var(--color-text-muted); margin-bottom: 16px;">If you are unable to pay the full balance, you can request an installment plan. Subject to hospital approval.</p>
+            <div class="form-group">
+                <label>Requested Months (2-12) <span class="text-danger">*</span></label>
+                <input type="number" id="pl-months" class="form-control" min="2" max="12" value="3">
+            </div>
+            <div class="form-group">
+                <label>Reason <span class="text-danger">*</span></label>
+                <textarea id="pl-reason" class="form-control" rows="3" placeholder="Min 10 characters..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="utils.closeModal('plan-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="submitPlan()">Submit Request</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PRINTABLE RECEIPT / INVOICE -->
+    <div class="print-area" id="print-section" style="display: none;">
+        <div style="text-align: center; border-bottom: 2px solid var(--color-primary); padding-bottom: 16px; margin-bottom: 32px;">
+            <h1 style="color: var(--color-primary); margin: 0;">PRIMECARE</h1>
+            <p style="margin: 0; font-size: 14px;">123 Rizal St., Quezon City | (02) 8123-4567</p>
+            <h2 style="margin-top: 16px; color: var(--color-text);" id="print-title">OFFICIAL RECEIPT</h2>
+        </div>
+        <div id="print-content"></div>
+        <div style="margin-top: 64px; text-align: center; font-size: 12px; color: var(--color-text-muted);">
+            This is a system-generated document.<br>PRIMECARE Hospital Information System
+        </div>
+    </div>
+
+    <script src="../js/data.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/app.js"></script>
+    <script src="../js/patient-bills.js"></script>
+</body>
+</html>
