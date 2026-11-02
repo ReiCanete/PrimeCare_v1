@@ -8,10 +8,30 @@ const api = {
     getById: function(collection, id) { return this.getAll(collection).find(item => item.id === id); },
     save: function(collection, item, prefix = 'ID') {
         let items = this.getAll(collection);
-        if (item.id) { items = items.map(i => i.id === item.id ? item : i); } 
-        else {
-            const count = items.length + 1;
-            item.id = `${prefix}-${count.toString().padStart(3, '0')}`;
+        if (item.id) { 
+            items = items.map(i => i.id === item.id ? item : i); 
+        } else {
+            let maxNum = 0;
+            items.forEach(i => {
+                if (i && i.id) {
+                    const match = String(i.id).match(/\d+$/);
+                    if (match) {
+                        const num = parseInt(match[0], 10);
+                        if (!isNaN(num) && num > maxNum) maxNum = num;
+                    }
+                }
+            });
+            let counters = this.getAll('counters')[0] || { bill: 1, receipt: 1 };
+            const counterVal = counters[collection] || 0;
+            let nextNum = Math.max(maxNum, counterVal) + 1;
+            let candidateId = `${prefix}-${nextNum.toString().padStart(3, '0')}`;
+            while (items.some(i => i.id === candidateId)) {
+                nextNum++;
+                candidateId = `${prefix}-${nextNum.toString().padStart(3, '0')}`;
+            }
+            item.id = candidateId;
+            counters[collection] = nextNum;
+            localStorage.setItem('primecare_counters', JSON.stringify([counters]));
             items.push(item);
         }
         localStorage.setItem(`primecare_${collection}`, JSON.stringify(items));
@@ -96,8 +116,28 @@ const api = {
             userObj.createdBy = currentUser.id;
             userObj.createdAt = new Date().toISOString().split('T')[0];
             userObj.lastLogin = null;
-            const count = users.length + 1;
-            userObj.id = `U-${count.toString().padStart(3, '0')}`;
+            
+            let maxNum = 0;
+            users.forEach(u => {
+                if (u && u.id) {
+                    const match = String(u.id).match(/\d+$/);
+                    if (match) {
+                        const num = parseInt(match[0], 10);
+                        if (!isNaN(num) && num > maxNum) maxNum = num;
+                    }
+                }
+            });
+            let counters = this.getAll('counters')[0] || { bill: 1, receipt: 1 };
+            const counterVal = counters.users || 0;
+            let nextNum = Math.max(maxNum, counterVal) + 1;
+            let candidateId = `U-${nextNum.toString().padStart(3, '0')}`;
+            while (users.some(u => u.id === candidateId)) {
+                nextNum++;
+                candidateId = `U-${nextNum.toString().padStart(3, '0')}`;
+            }
+            userObj.id = candidateId;
+            counters.users = nextNum;
+            localStorage.setItem('primecare_counters', JSON.stringify([counters]));
             users.push(userObj);
         } else {
             const idx = users.findIndex(u => u.id === data.id);
@@ -225,6 +265,49 @@ const api = {
     },
     getDepartments: async function() { return this.getAll('departments'); },
     getIdTypes: async function() { return this.getAll('idTypes'); },
+    searchDoctors: async function(filters = {}) {
+        let docs = this.getAll('doctors');
+        if (filters.keyword) {
+            const kw = filters.keyword.trim().toLowerCase();
+            docs = docs.filter(d => 
+                (d.name && d.name.toLowerCase().includes(kw)) ||
+                (d.specialization && d.specialization.toLowerCase().includes(kw)) ||
+                (d.department && d.department.toLowerCase().includes(kw))
+            );
+        }
+        if (filters.specialization && filters.specialization !== 'All' && filters.specialization !== '') {
+            docs = docs.filter(d => d.specialization.toLowerCase() === filters.specialization.toLowerCase());
+        }
+        if (filters.language && filters.language !== 'All' && filters.language !== '') {
+            docs = docs.filter(d => Array.isArray(d.languages) && d.languages.some(l => l.toLowerCase() === filters.language.toLowerCase()));
+        }
+        if (filters.insurance && filters.insurance !== 'All' && filters.insurance !== '') {
+            docs = docs.filter(d => Array.isArray(d.acceptedInsurance) && d.acceptedInsurance.some(i => i.toLowerCase() === filters.insurance.toLowerCase()));
+        }
+        if (filters.status && filters.status !== 'All' && filters.status !== '') {
+            docs = docs.filter(d => d.status.toLowerCase() === filters.status.toLowerCase());
+        }
+        return docs;
+    },
+    getEmergencyInfo: async function() {
+        const stored = localStorage.getItem('primecare_emergencyInfo');
+        if (stored) {
+            try { return JSON.parse(stored); } catch (e) { console.error('Failed to parse emergencyInfo:', e); }
+        }
+        return (typeof seedData !== 'undefined' && seedData.emergencyInfo) ? seedData.emergencyInfo : null;
+    },
+    getTriageGuide: async function() {
+        const stored = this.getAll('triageGuide');
+        if (stored && stored.length > 0) return stored;
+        return (typeof seedData !== 'undefined' && seedData.triageGuide) ? seedData.triageGuide : [];
+    },
+    getVisitorInfo: async function() {
+        const stored = localStorage.getItem('primecare_visitorInfo');
+        if (stored) {
+            try { return JSON.parse(stored); } catch (e) { console.error('Failed to parse visitorInfo:', e); }
+        }
+        return (typeof seedData !== 'undefined' && seedData.visitorInfo) ? seedData.visitorInfo : null;
+    },
 
     // ==========================================
     // 4. PATIENTS (STAFF SIDE)
