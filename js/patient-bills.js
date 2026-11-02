@@ -117,6 +117,37 @@ async function renderInsurance() {
     }
 }
 
+// Helpers to categorize charges cleanly
+function getBillingCategory(item) {
+    const type = (item.type || '').trim().toLowerCase();
+    if (type === 'room' || type.includes('board') || type.includes('accommodation')) {
+        return 'Room Accommodation / Room & Board';
+    }
+    if (type === 'professional fee' || type.includes('doctor') || type.includes('consultation')) {
+        return 'Professional Fees';
+    }
+    if (type === 'medication' || type.includes('pharmacy') || type.includes('medicine') || type.includes('supplies')) {
+        return 'Pharmacy / Medications / Supplies';
+    }
+    if (type === 'laboratory' || type.includes('diagnostic') || type.includes('lab') || type.includes('test')) {
+        return 'Laboratory / Diagnostics';
+    }
+    return item.type || 'Other Services / Miscellaneous';
+}
+
+function groupBillItems(items) {
+    const groups = {};
+    items.forEach(item => {
+        const cat = getBillingCategory(item);
+        if (!groups[cat]) {
+            groups[cat] = { name: cat, items: [], subtotal: 0 };
+        }
+        groups[cat].items.push(item);
+        groups[cat].subtotal += (item.amount || 0);
+    });
+    return groups;
+}
+
 window.viewBill = async function(id) {
     currentBillId = id;
     const b = await api.getMyBillById(id);
@@ -128,12 +159,65 @@ window.viewBill = async function(id) {
     let badge = 'success'; if (b.status === 'Unpaid') badge = 'danger'; if (b.status === 'Partial') badge = 'warning'; if (b.status === 'Voided') badge = 'secondary" style="background:var(--color-border);color:var(--color-text-muted);';
     document.getElementById('v-status').innerHTML = `<span class="badge badge-${badge}">${b.status}</span>`;
 
-    document.getElementById('v-items').innerHTML = b.items.map(i => `<tr><td>${utils.escapeHTML(i.description)}</td><td>${i.qty}</td><td class="num">${utils.formatCurrency(i.amount)}</td></tr>`).join('');
+    // Render grouped charges with category subtotals
+    const groups = groupBillItems(b.items);
+    let itemsHtml = '';
+    for (const catName in groups) {
+        const grp = groups[catName];
+        itemsHtml += `
+            <tr class="bill-category-header" style="background: var(--color-bg); font-weight: 600;">
+                <td colspan="5" style="color: var(--color-primary); padding: 8px 16px; border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border);">
+                    📂 ${utils.escapeHTML(grp.name)}
+                </td>
+            </tr>
+        `;
+        grp.items.forEach(item => {
+            const unitPrice = item.unitPrice !== undefined ? item.unitPrice : (item.qty ? item.amount / item.qty : item.amount);
+            itemsHtml += `
+                <tr>
+                    <td style="color: var(--color-text-muted); font-size: 13px;">${utils.escapeHTML(item.type || 'Other')}</td>
+                    <td><strong>${utils.escapeHTML(item.description)}</strong></td>
+                    <td style="text-align: center;">${item.qty}</td>
+                    <td class="num">${utils.formatCurrency(unitPrice)}</td>
+                    <td class="num" style="font-weight: 600;">${utils.formatCurrency(item.amount)}</td>
+                </tr>
+            `;
+        });
+        itemsHtml += `
+            <tr class="bill-category-subtotal" style="font-weight: 600; background: var(--color-surface);">
+                <td colspan="4" style="text-align: right; color: var(--color-text-muted); font-size: 13px;">
+                    Subtotal for ${utils.escapeHTML(grp.name)}:
+                </td>
+                <td class="num" style="color: var(--color-primary);">${utils.formatCurrency(grp.subtotal)}</td>
+            </tr>
+        `;
+    }
+    document.getElementById('v-items').innerHTML = itemsHtml;
 
+    // Gross Subtotal
     document.getElementById('v-subtotal').innerText = utils.formatCurrency(b.subtotal);
-    document.getElementById('v-disc-type').innerText = b.discountType;
-    document.getElementById('v-disc-amt').innerText = `-${utils.formatCurrency(b.discountAmount)}`;
-    document.getElementById('v-ins-amt').innerText = `-${utils.formatCurrency(b.insuranceCoverage)}`;
+
+    // Discount Breakdown
+    const discBox = document.getElementById('v-discount-details');
+    if (b.discountType && b.discountType !== 'None' && b.discountAmount > 0) {
+        discBox.style.display = 'block';
+        document.getElementById('v-disc-type').innerText = b.discountType === 'Senior Citizen' ? 'Senior Citizen 20%' : (b.discountType === 'PWD' ? 'PWD 20%' : b.discountType);
+        document.getElementById('v-disc-amt').innerText = `-${utils.formatCurrency(b.discountAmount)}`;
+        document.getElementById('v-disc-basis').innerText = `${utils.formatCurrency(b.subtotal)} @ 20%`;
+    } else {
+        discBox.style.display = 'none';
+    }
+
+    // Insurance Breakdown
+    const insBox = document.getElementById('v-insurance-details');
+    if (b.insuranceCoverage && b.insuranceCoverage > 0) {
+        insBox.style.display = 'block';
+        document.getElementById('v-ins-prov').innerText = b.insuranceProvider || (myPatientProfile && myPatientProfile.insuranceProvider ? myPatientProfile.insuranceProvider : 'Insurance Benefit');
+        document.getElementById('v-ins-amt').innerText = `-${utils.formatCurrency(b.insuranceCoverage)}`;
+    } else {
+        insBox.style.display = 'none';
+    }
+
     document.getElementById('v-total').innerText = utils.formatCurrency(b.total);
     document.getElementById('v-paid').innerText = utils.formatCurrency(b.amountPaid);
     document.getElementById('v-balance').innerText = utils.formatCurrency(b.balance);
@@ -237,23 +321,117 @@ window.submitPlan = async function() {
 
 window.printInvoice = async function() {
     const b = await api.getMyBillById(currentBillId);
+    if (!b) return;
+
     document.getElementById('print-title').innerText = 'STATEMENT OF ACCOUNT';
+
+    const groups = groupBillItems(b.items);
+    let itemsRows = '';
+    for (const catName in groups) {
+        const grp = groups[catName];
+        itemsRows += `
+            <tr style="background: #f1f5f9; font-weight: bold; border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1;">
+                <td colspan="5" style="padding: 6px 10px; color: #0369a1; font-size: 13px;">${utils.escapeHTML(grp.name)}</td>
+            </tr>
+        `;
+        grp.items.forEach(item => {
+            const unitPrice = item.unitPrice !== undefined ? item.unitPrice : (item.qty ? item.amount / item.qty : item.amount);
+            itemsRows += `
+                <tr style="border-bottom: 1px solid #e2e8f0;">
+                    <td style="padding: 6px 10px; font-size: 12px; color: #64748b;">${utils.escapeHTML(item.type || 'Other')}</td>
+                    <td style="padding: 6px 10px;">${utils.escapeHTML(item.description)}</td>
+                    <td style="padding: 6px 10px; text-align: center;">${item.qty}</td>
+                    <td style="padding: 6px 10px; text-align: right;">${utils.formatCurrency(unitPrice)}</td>
+                    <td style="padding: 6px 10px; text-align: right; font-weight: 600;">${utils.formatCurrency(item.amount)}</td>
+                </tr>
+            `;
+        });
+        itemsRows += `
+            <tr style="background: #f8fafc; font-weight: 600;">
+                <td colspan="4" style="padding: 6px 10px; text-align: right; font-size: 12px; color: #475569;">Subtotal for ${utils.escapeHTML(grp.name)}:</td>
+                <td style="padding: 6px 10px; text-align: right; color: #0369a1;">${utils.formatCurrency(grp.subtotal)}</td>
+            </tr>
+        `;
+    }
+
+    let discountHtml = '';
+    if (b.discountType && b.discountType !== 'None' && b.discountAmount > 0) {
+        discountHtml = `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #dc2626;">
+                <span>Discount (${b.discountType} - 20%):</span>
+                <span>-${utils.formatCurrency(b.discountAmount)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 11px; color: #64748b;">
+                <span>(Eligible Subtotal: ${utils.formatCurrency(b.subtotal)})</span>
+                <span></span>
+            </div>
+        `;
+    }
+
+    let insuranceHtml = '';
+    if (b.insuranceCoverage && b.insuranceCoverage > 0) {
+        insuranceHtml = `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #16a34a;">
+                <span>Insurance (${b.insuranceProvider || (myPatientProfile && myPatientProfile.insuranceProvider ? myPatientProfile.insuranceProvider : 'Coverage')}):</span>
+                <span>-${utils.formatCurrency(b.insuranceCoverage)}</span>
+            </div>
+        `;
+    }
+
     document.getElementById('print-content').innerHTML = `
-        <div style="display: flex; justify-content: space-between; margin-bottom: 2rem;">
-            <div><strong>Patient:</strong> ${myPatientProfile.fullName}<br><strong>Address:</strong> ${myPatientProfile.address}</div>
-            <div style="text-align: right;"><strong>Bill No:</strong> ${b.id}<br><strong>Date:</strong> ${utils.formatDate(b.createdAt.split('T')[0])}</div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #e2e8f0; font-size: 13px;">
+            <div>
+                <div><strong>Patient Name:</strong> ${myPatientProfile ? myPatientProfile.fullName : 'Unknown'}</div>
+                <div><strong>Patient ID:</strong> ${b.patientId}</div>
+                <div><strong>Address:</strong> ${myPatientProfile && myPatientProfile.address ? myPatientProfile.address : 'Not provided'}</div>
+            </div>
+            <div style="text-align: right;">
+                <div><strong>Statement / Bill No:</strong> ${b.id}</div>
+                <div><strong>Billing Date:</strong> ${utils.formatDate(b.createdAt.split('T')[0])}</div>
+                <div><strong>Payment Status:</strong> <span style="font-weight: bold; text-transform: uppercase;">${b.status}</span></div>
+            </div>
         </div>
-        <table class="bill-table">
-            <thead><tr><th>Description</th><th>Qty</th><th class="num">Amount</th></tr></thead>
-            <tbody>${b.items.map(i => `<tr><td>${i.description}</td><td>${i.qty}</td><td class="num">${utils.formatCurrency(i.amount)}</td></tr>`).join('')}</tbody>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 13px;">
+            <thead>
+                <tr style="background: #f1f5f9; text-align: left; border-bottom: 2px solid #cbd5e1;">
+                    <th style="padding: 8px 10px; width: 20%;">Category</th>
+                    <th style="padding: 8px 10px;">Description</th>
+                    <th style="padding: 8px 10px; width: 60px; text-align: center;">Qty</th>
+                    <th style="padding: 8px 10px; width: 110px; text-align: right;">Unit Price</th>
+                    <th style="padding: 8px 10px; width: 110px; text-align: right;">Amount</th>
+                </tr>
+            </thead>
+            <tbody>${itemsRows}</tbody>
         </table>
-        <div style="width: 300px; margin-left: auto; text-align: right;">
-            <div>Subtotal: ${utils.formatCurrency(b.subtotal)}</div>
-            <div>Discount: -${utils.formatCurrency(b.discountAmount)}</div>
-            <div>Insurance: -${utils.formatCurrency(b.insuranceCoverage)}</div>
-            <div style="font-size: var(--fs-lg); font-weight: bold; margin-top: var(--space-8);">Total Due: ${utils.formatCurrency(b.total)}</div>
+
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; page-break-inside: avoid;">
+            <div style="font-size: 12px; color: #64748b; max-width: 320px;">
+                <p><strong>Notice:</strong> Please present this Statement of Account when settling payments at the hospital cashier or through PrimeCare online portal.</p>
+            </div>
+            <div style="width: 360px; font-size: 13px; border: 1px solid #e2e8f0; padding: 14px; border-radius: 4px; background: #fafafa;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                    <strong>Gross Subtotal:</strong>
+                    <strong>${utils.formatCurrency(b.subtotal)}</strong>
+                </div>
+                ${discountHtml}
+                ${insuranceHtml}
+                <div style="display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 2px solid #0f172a; font-size: 16px; font-weight: bold; color: #0369a1;">
+                    <span>Final Amount Due:</span>
+                    <span>${utils.formatCurrency(b.total)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 6px; font-weight: 600; color: #0284c7;">
+                    <span>Amount Paid:</span>
+                    <span>${utils.formatCurrency(b.amountPaid)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 16px; font-weight: bold; color: ${b.balance > 0 ? '#dc2626' : '#16a34a'};">
+                    <span>Outstanding Balance:</span>
+                    <span>${utils.formatCurrency(b.balance)}</span>
+                </div>
+            </div>
         </div>
     `;
+
     utils.closeModal('view-bill-modal');
     document.getElementById('print-section').style.display = 'block';
     window.print();

@@ -1106,3 +1106,48 @@ th.sortable.desc::after { content: ' \2193'; opacity: 1; color: var(--color-acce
     right: 28px;
   }
 }
+
+/* ---------- 5. Enhanced Billing Itemization & SOA Styling ---------- */
+.bill-category-header td {
+  padding: 10px 16px;
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 600;
+  color: var(--color-primary);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+[data-theme="dark"] .bill-category-header td {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-accent);
+}
+
+.bill-category-subtotal td {
+  padding: 8px 16px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 13px;
+}
+
+[data-theme="dark"] .bill-category-subtotal td {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+@media print {
+  .bill-category-header td {
+    background: #f1f5f9 !important;
+    color: #0369a1 !important;
+    border-top: 1px solid #cbd5e1 !important;
+    border-bottom: 1px solid #cbd5e1 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .bill-category-subtotal td {
+    background: #f8fafc !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}

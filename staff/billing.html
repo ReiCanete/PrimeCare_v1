@@ -152,39 +152,64 @@
 
     <!-- VIEW BILL MODAL -->
     <div class="modal" id="view-bill-modal">
-        <div class="modal-content print-area-hide" style="max-width: 700px;">
+        <div class="modal-content print-area-hide" style="max-width: 820px;">
             <div class="modal-header">
-                <h2>Bill Details</h2>
+                <h2>Statement of Account Details</h2>
                 <button class="modal-close" onclick="utils.closeModal('view-bill-modal')">&times;</button>
             </div>
             <div id="v-alert"></div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 14px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 14px; background: var(--color-bg); padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--color-border);">
                 <div>
-                    <strong>Patient:</strong> <span id="v-patient"></span><br>
-                    <strong>Date:</strong> <span id="v-date"></span>
+                    <div><strong>Patient:</strong> <span id="v-patient"></span></div>
+                    <div><strong>Date:</strong> <span id="v-date"></span></div>
                 </div>
                 <div style="text-align: right;">
-                    <strong>Bill ID:</strong> <span id="v-id"></span><br>
-                    <strong>Status:</strong> <span id="v-status"></span>
+                    <div><strong>Bill Reference:</strong> <span id="v-id" style="font-weight: 700; color: var(--color-accent);"></span></div>
+                    <div><strong>Status:</strong> <span id="v-status"></span></div>
                 </div>
             </div>
 
-            <div id="v-void-reason" style="display: none; color: var(--color-danger); background: var(--color-danger-bg); padding: 8px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 14px;"></div>
+            <div id="v-void-reason" style="display: none; color: var(--color-danger); background: var(--color-danger-bg); padding: 8px 12px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 14px;"></div>
 
+            <!-- Grouped & Itemized Charges -->
             <div class="table-responsive" style="margin-bottom: 24px;">
                 <table class="bill-table" style="margin-bottom: 0;">
-                    <thead><tr><th>Type</th><th>Description</th><th>Qty</th><th class="num">Amount</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th style="width: 22%;">Category</th>
+                            <th>Description</th>
+                            <th style="width: 70px; text-align: center;">Qty</th>
+                            <th class="num" style="width: 120px;">Unit Price</th>
+                            <th class="num" style="width: 120px;">Amount</th>
+                        </tr>
+                    </thead>
                     <tbody id="v-items"></tbody>
                 </table>
             </div>
 
-            <div class="totals-box" style="margin-bottom: 24px;">
-                <div class="totals-row"><span>Subtotal:</span> <span id="v-subtotal"></span></div>
-                <div class="totals-row" style="color: var(--color-danger);"><span>Discount (<span id="v-disc-type"></span>):</span> <span id="v-disc-amt"></span></div>
-                <div class="totals-row" style="color: var(--color-success);"><span>Insurance (<span id="v-ins-prov"></span>):</span> <span id="v-ins-amt"></span></div>
-                <div class="totals-row grand-total"><span>Total:</span> <span id="v-total"></span></div>
-                <div class="totals-row" style="color: var(--color-accent); font-weight: bold;"><span>Amount Paid:</span> <span id="v-paid"></span></div>
-                <div class="totals-row" style="color: var(--color-danger); font-weight: bold; font-size: 18px;"><span>Balance:</span> <span id="v-balance"></span></div>
+            <!-- Deductions & Balance Breakdown -->
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 24px;">
+                <div class="totals-box" style="width: 380px; margin-left: auto;">
+                    <div class="totals-row"><span>Gross Subtotal:</span> <strong id="v-subtotal"></strong></div>
+                    <div id="v-discount-details" style="display: none; border-top: 1px dashed var(--color-border); padding-top: 6px; margin-top: 6px;">
+                        <div style="font-size: 12px; font-weight: 600; color: var(--color-danger); text-transform: uppercase;">Applicable Discount</div>
+                        <div class="totals-row" style="color: var(--color-danger); font-size: 13px;">
+                            <span>Discount (<span id="v-disc-type"></span>):</span> <span id="v-disc-amt"></span>
+                        </div>
+                        <div class="totals-row" style="font-size: 12px; color: var(--color-text-muted);">
+                            <span>Eligible Subtotal:</span> <span id="v-disc-basis"></span>
+                        </div>
+                    </div>
+                    <div id="v-insurance-details" style="display: none; border-top: 1px dashed var(--color-border); padding-top: 6px; margin-top: 6px;">
+                        <div style="font-size: 12px; font-weight: 600; color: var(--color-success); text-transform: uppercase;">Insurance Deduction</div>
+                        <div class="totals-row" style="color: var(--color-success); font-size: 13px;">
+                            <span>Coverage (<span id="v-ins-prov"></span>):</span> <span id="v-ins-amt"></span>
+                        </div>
+                    </div>
+                    <div class="totals-row grand-total"><span>Amount Due:</span> <span id="v-total"></span></div>
+                    <div class="totals-row" style="color: var(--color-accent); font-weight: 600;"><span>Amount Paid:</span> <span id="v-paid"></span></div>
+                    <div class="totals-row" style="color: var(--color-danger); font-weight: bold; font-size: 18px;"><span>Balance Due:</span> <span id="v-balance"></span></div>
+                </div>
             </div>
 
             <h3 style="margin-bottom: 8px; font-size: 16px;">Payment History</h3>
@@ -193,7 +218,7 @@
             <div class="modal-footer" style="justify-content: space-between;">
                 <button class="btn btn-outline admin-only" style="color: var(--color-danger); border-color: var(--color-danger); display: none;" id="btn-void" onclick="promptVoid()">Void Bill</button>
                 <div style="margin-left: auto; display: flex; gap: 8px;">
-                    <button class="btn btn-outline" onclick="printInvoice()">Print Invoice</button>
+                    <button class="btn btn-outline" onclick="printInvoice()">Print Statement of Account</button>
                     <button class="btn btn-primary" id="btn-pay" onclick="openPayModal()">Make Payment</button>
                 </div>
             </div>
