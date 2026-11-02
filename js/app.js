@@ -205,6 +205,10 @@ const utils = {
     showAlert: (containerId, type, message) => {
         const container = document.getElementById(containerId);
         if (!container) return;
+        if (!message) {
+            container.innerHTML = '';
+            return;
+        }
         const alertType = type === 'error' ? 'danger' : type;
         container.innerHTML = `<div class="alert alert-${alertType}">${message}</div>`;
         container.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -228,9 +232,115 @@ const utils = {
             toast.classList.add('toast-hide');
             setTimeout(() => toast.remove(), 300);
         }, 4000);
+    },
+    getNextDoctorAvailability: (doctor, referenceDate = new Date()) => {
+        if (!doctor || doctor.status !== 'active' || !Array.isArray(doctor.schedule) || doctor.schedule.length === 0) {
+            return {
+                isAvailable: false,
+                statusText: 'No Upcoming Availability',
+                badgeClass: 'badge-neutral',
+                sortRank: Infinity,
+                nextSchedule: null,
+                upcomingSchedules: [],
+                pastSchedules: []
+            };
+        }
+
+        const now = new Date(referenceDate);
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const fullDayNames = {
+            'Sun': 'Sunday', 'Mon': 'Monday', 'Tue': 'Tuesday', 'Wed': 'Wednesday',
+            'Thu': 'Thursday', 'Fri': 'Friday', 'Sat': 'Saturday'
+        };
+
+        const upcomingSchedules = [];
+        const pastSchedules = [];
+
+        // Check a rolling 7-day window (i = 0 is today, up to i = 6)
+        for (let i = 0; i < 7; i++) {
+            const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+            const yyyy = targetDate.getFullYear();
+            const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+            const dd = String(targetDate.getDate()).padStart(2, '0');
+            const dateStr = `${yyyy}-${mm}-${dd}`;
+            const dayCode = dayNames[targetDate.getDay()];
+
+            // Check if doctor works on this day
+            const shift = doctor.schedule.find(s => s.day === dayCode);
+            if (!shift) continue;
+
+            const [startH, startM] = (shift.start || '00:00').split(':').map(Number);
+            const [endH, endM] = (shift.end || '23:59').split(':').map(Number);
+
+            const shiftStartTime = new Date(yyyy, targetDate.getMonth(), targetDate.getDate(), startH, startM, 0, 0);
+            const shiftEndTime = new Date(yyyy, targetDate.getMonth(), targetDate.getDate(), endH, endM, 0, 0);
+
+            const scheduleItem = {
+                dayCode,
+                dayName: fullDayNames[dayCode] || dayCode,
+                dateStr,
+                dateObj: targetDate,
+                formattedDate: utils.formatDate(dateStr),
+                start: shift.start,
+                end: shift.end,
+                startTime: shiftStartTime,
+                endTime: shiftEndTime,
+                daysOffset: i
+            };
+
+            if (now >= shiftEndTime) {
+                // Shift has already ended
+                pastSchedules.push({ ...scheduleItem, status: 'Completed' });
+            } else {
+                // Shift is active or upcoming
+                const isActive = (now >= shiftStartTime && now < shiftEndTime);
+                upcomingSchedules.push({
+                    ...scheduleItem,
+                    isActive,
+                    status: isActive ? 'In Progress' : 'Upcoming'
+                });
+            }
+        }
+
+        if (upcomingSchedules.length === 0) {
+            return {
+                isAvailable: false,
+                statusText: 'No Upcoming Availability',
+                badgeClass: 'badge-neutral',
+                sortRank: Infinity,
+                nextSchedule: null,
+                upcomingSchedules: [],
+                pastSchedules
+            };
+        }
+
+        const next = upcomingSchedules[0];
+        let statusText = '';
+        let badgeClass = 'badge-success';
+
+        if (next.daysOffset === 0) {
+            statusText = next.isActive ? `Available Now (until ${utils.formatTime(next.end)})` : `Available Today (${utils.formatTime(next.start)} - ${utils.formatTime(next.end)})`;
+        } else if (next.daysOffset === 1) {
+            statusText = `Available Tomorrow (${utils.formatTime(next.start)} - ${utils.formatTime(next.end)})`;
+            badgeClass = 'badge-info';
+        } else {
+            statusText = `Next: ${next.dayName} (${utils.formatTime(next.start)} - ${utils.formatTime(next.end)})`;
+            badgeClass = 'badge-secondary';
+        }
+
+        return {
+            isAvailable: true,
+            statusText,
+            badgeClass,
+            sortRank: next.startTime.getTime(),
+            nextSchedule: next,
+            upcomingSchedules,
+            pastSchedules
+        };
     }
 };
 
+window.utils = utils;
 window.showToast = utils.showToast;
 
 window.toggleTheme = function() {
@@ -298,7 +408,11 @@ function enforcePreviewReadOnly() {
         'button[type="submit"], .btn-primary, .btn-danger, .payment-tile, input[type="submit"]'
     );
     lockTargets.forEach(btn => {
-        if (btn.textContent.toLowerCase().includes('view') || btn.textContent.toLowerCase().includes('print')) return;
+        const text = btn.textContent.toLowerCase();
+        const onclick = (btn.getAttribute('onclick') || '').toLowerCase();
+        // Do not disable navigation, stepper, wizard steps, tabs, modal, view, or print buttons
+        if (text.includes('view') || text.includes('print') || text.includes('next') || text.includes('back') || text.includes('step') || text.includes('review') || text.includes('close') || text.includes('cancel')) return;
+        if (onclick.includes('step') || onclick.includes('tab') || onclick.includes('modal') || onclick.includes('close') || onclick.includes('reset')) return;
         btn.disabled = true;
         btn.classList.add('preview-disabled');
         btn.title = 'Disabled in Preview Mode';
@@ -324,21 +438,18 @@ async function renderShell() {
         return;
     }
 
-    if (area === 'staff' && realUser.role === 'patient') {
+    // Patient role (real or simulated) should not access staff pages
+    if (area === 'staff' && user.role === 'patient') {
         window.location.href = '../patient/home.html';
         return;
     }
     
-    const isPreview = area === 'patient' && (realUser.role !== 'patient' || user._isSimulated);
+    // Preview mode is active ONLY when staff/admin directly visits patient pages without simulating patient
+    const isPreview = area === 'patient' && user.role !== 'patient';
     if (isPreview) {
         localStorage.setItem('primecare_preview', '1');
     } else {
         localStorage.removeItem('primecare_preview');
-    }
-    
-    if (area === 'patient' && realUser.role !== 'patient' && !isPreview) {
-        window.location.href = '../staff/dashboard.html';
-        return;
     }
 
     const currentPage = document.body.getAttribute('data-page') || '';
@@ -486,7 +597,7 @@ const menuItems = roleMenu.map(item => `
 
     const pageContent = document.getElementById('page-content');
     if (pageContent) {
-        const inPreviewMode = area === 'patient' && (realUser.role !== 'patient' || user._isSimulated);
+        const inPreviewMode = isPreview;
         const existingPreview = document.getElementById('preview-banner');
         if (inPreviewMode) {
             if (!existingPreview) {

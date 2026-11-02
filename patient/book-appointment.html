@@ -56,36 +56,39 @@
                     </div>
                 </div>
 
-                <!-- Step 2: Date & Time -->
-                <div id="step-2" class="form-step">
-                    <h3 style="margin-bottom: 24px; color: var(--color-primary); text-align: center;">Step 2: Select Date & Time</h3>
-                    
-                    <div style="background: var(--color-bg); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 24px; display: flex; align-items: center; gap: 16px; justify-content: center;">
-                        <div class="doc-avatar-sm" id="s2-doc-avatar" style="width: 48px; height: 48px; font-size: 20px;"></div>
-                        <div>
-                            <strong id="s2-doc-name" style="color: var(--color-text); font-size: 16px;"></strong><br>
-                            <span style="font-size: 14px; color: var(--color-text-muted);" id="s2-doc-spec"></span>
-                        </div>
-                    </div>
-
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label>Date <span class="text-danger">*</span></label>
-                            <input type="date" id="b-date" class="form-control" onchange="loadSlots()">
-                        </div>
-                        <div class="form-group">
-                            <label>Available Time Slots <span class="text-danger">*</span></label>
-                            <input type="hidden" id="b-time">
-                            <div id="b-slots" class="slot-grid">
-                                <div style="grid-column: 1/-1; color: var(--color-text-muted); font-size: 14px; padding: 12px; background: var(--color-bg); border-radius: var(--radius-sm); text-align: center;">Select a date to view slots.</div>
+                    <!-- Step 2: Date & Time -->
+                    <div id="step-2" class="form-step">
+                        <h3 style="margin-bottom: 24px; color: var(--color-primary); text-align: center;">Step 2: Select Date & Time</h3>
+                        
+                        <div style="background: var(--color-bg); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 24px; display: flex; align-items: center; gap: 16px; justify-content: center;">
+                            <div class="doc-avatar-sm" id="s2-doc-avatar" style="width: 48px; height: 48px; font-size: 20px;"></div>
+                            <div>
+                                <strong id="s2-doc-name" style="color: var(--color-text); font-size: 16px;"></strong><br>
+                                <span style="font-size: 14px; color: var(--color-text-muted);" id="s2-doc-spec"></span>
                             </div>
                         </div>
+
+                        <!-- Weekly Schedule Overview (Upcoming vs Past) -->
+                        <div id="doctor-schedule-overview" style="margin-bottom: 24px;"></div>
+
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Date <span class="text-danger">*</span></label>
+                                <input type="date" id="b-date" class="form-control" onchange="loadSlots()">
+                            </div>
+                            <div class="form-group">
+                                <label>Available Time Slots <span class="text-danger">*</span></label>
+                                <input type="hidden" id="b-time">
+                                <div id="b-slots" class="slot-grid">
+                                    <div style="grid-column: 1/-1; color: var(--color-text-muted); font-size: 14px; padding: 12px; background: var(--color-bg); border-radius: var(--radius-sm); text-align: center;">Select a date to view slots.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 32px; border-top: 1px solid var(--color-border); padding-top: 24px;">
+                            <button type="button" class="btn btn-outline" onclick="prevStep(2)">&larr; Back</button>
+                            <button type="button" class="btn btn-primary" onclick="nextStep(2)">Next Step &rarr;</button>
+                        </div>
                     </div>
-                    <div style="display: flex; justify-content: space-between; margin-top: 32px; border-top: 1px solid var(--color-border); padding-top: 24px;">
-                        <button class="btn btn-outline" onclick="prevStep(2)">&larr; Back</button>
-                        <button class="btn btn-primary" onclick="nextStep(2)">Next Step &rarr;</button>
-                    </div>
-                </div>
 
                 <!-- Step 3: Details -->
                 <div id="step-3" class="form-step">
@@ -103,8 +106,8 @@
                         <div style="font-size: 12px; color: var(--color-text-muted); margin-top: 4px; text-align: right;" id="char-count">0 chars</div>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-top: 32px; border-top: 1px solid var(--color-border); padding-top: 24px;">
-                        <button class="btn btn-outline" onclick="prevStep(3)">&larr; Back</button>
-                        <button class="btn btn-primary" onclick="nextStep(3)">Review Booking &rarr;</button>
+                        <button type="button" class="btn btn-outline" onclick="prevStep(3)">&larr; Back</button>
+                        <button type="button" class="btn btn-primary" onclick="nextStep(3)">Review Booking &rarr;</button>
                     </div>
                 </div>
 
@@ -129,8 +132,8 @@
                         ℹ️ Your appointment request will be reviewed and confirmed by hospital staff. You will receive a notification once confirmed.
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-top: 32px; border-top: 1px solid var(--color-border); padding-top: 24px;">
-                        <button class="btn btn-outline" onclick="prevStep(4)">&larr; Back</button>
-                        <button class="btn btn-primary" onclick="submitBooking()">Confirm Booking</button>
+                        <button type="button" class="btn btn-outline" onclick="prevStep(4)">&larr; Back</button>
+                        <button type="button" class="btn btn-primary" onclick="submitBooking()">Confirm Booking</button>
                     </div>
                 </div>
             </div>

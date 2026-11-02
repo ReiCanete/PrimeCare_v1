@@ -66,7 +66,13 @@
                 return;
             }
 
-            grid.innerHTML = doctors.map(doc => `
+            // Sort doctors by earliest upcoming availability (non-mutating copy)
+            const sortedDoctors = [...doctors].map(doc => {
+                const avail = utils.getNextDoctorAvailability(doc);
+                return { doc, avail };
+            }).sort((a, b) => a.avail.sortRank - b.avail.sortRank);
+
+            grid.innerHTML = sortedDoctors.map(({ doc, avail }) => `
                 <div class="card doctor-card">
                     <div style="display: flex; gap: 1rem; align-items: center;">
                         <div class="doctor-avatar">${doc.photoInitials || 'DR'}</div>
@@ -77,14 +83,25 @@
                     </div>
                     <div>
                         <strong>Specialty:</strong> ${doc.specialization}<br>
-                        <strong>Schedule:</strong> ${Array.isArray(doc.schedule) ? doc.schedule.map(s=>s.day).join(', ') : doc.schedule}
+                        <strong>Fee:</strong> ${utils.formatCurrency(doc.consultationFee || 0)}<br>
+                        <strong>Schedule:</strong> ${Array.isArray(doc.schedule) ? doc.schedule.map(s => s.day).join(', ') : doc.schedule}
                     </div>
+                    
+                    <!-- Availability Badge -->
+                    <div style="margin-top: 4px;">
+                        <span class="badge ${avail.badgeClass}" style="display: inline-block; font-size: 12px; font-weight: 600;">
+                            ${avail.statusText}
+                        </span>
+                    </div>
+
                     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                         ${(doc.acceptedInsurance || []).map(ins => `<span class="badge badge-info">${ins}</span>`).join('')}
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--border);">
-                        <span class="badge ${doc.status === 'active' ? 'badge-success' : 'badge-danger'}">${doc.status === 'active' ? 'Available' : 'Unavailable'}</span>
-                        <a href="login.html" class="btn btn-primary">Book</a>
+                        <span style="font-size: 13px; color: var(--text-muted);">
+                            ${avail.isAvailable ? 'Appointments open' : 'No open slots'}
+                        </span>
+                        <a href="login.html" class="btn btn-primary" ${!avail.isAvailable ? 'style="opacity: 0.7;"' : ''}>Book</a>
                     </div>
                 </div>
             `).join('');

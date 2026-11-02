@@ -56,30 +56,43 @@ window.renderDoctors = async function() {
     let docs = (await api.getDoctors()).filter(d => d.status === 'active');
     if (spec !== 'All') docs = docs.filter(d => d.specialization === spec);
 
+    // Sort doctors by earliest upcoming availability
+    const sortedDocs = [...docs].map(d => {
+        const avail = utils.getNextDoctorAvailability(d);
+        return { doc: d, avail };
+    }).sort((a, b) => a.avail.sortRank - b.avail.sortRank);
+
     const list = document.getElementById('doctor-list');
-    if (docs.length === 0) {
+    if (sortedDocs.length === 0) {
         list.innerHTML = '<div class="empty-state" style="grid-column: 1/-1;"><div style="text-align: center; color: var(--color-text-muted); padding: 2rem;">No doctors available.</div></div>';
     } else {
-        list.innerHTML = docs.map(d => {
+        list.innerHTML = sortedDocs.map(({ doc: d, avail }) => {
             let schedText = 'Not set';
             if (Array.isArray(d.schedule)) schedText = d.schedule.map(s => s.day).join(', ');
             else if (typeof d.schedule === 'string') schedText = d.schedule;
 
             return `
             <div class="card row-clickable" style="padding: 16px; border: 2px solid var(--color-border);" onclick="selectDoctor('${d.id}')">
-                <div class="doc-name-cell" style="margin-bottom: 12px;">
+                <div class="doc-name-cell" style="margin-bottom: 8px;">
                     <div class="doc-avatar-sm">${d.photoInitials || 'DR'}</div>
                     <div>
                         <strong style="color: var(--color-primary);">${utils.escapeHTML(utils.formatDoctorName(d.name))}</strong><br>
                         <span style="font-size: 12px; color: var(--color-text-muted);">${d.specialization}</span>
                     </div>
                 </div>
+
+                <div style="margin-bottom: 8px;">
+                    <span class="badge ${avail.badgeClass}" style="font-size: 11px; font-weight: 600;">
+                        ${avail.statusText}
+                    </span>
+                </div>
+
                 <div style="font-size: 12px; color: var(--color-text-muted); line-height: 1.6;">
                     <strong>Fee:</strong> ${utils.formatCurrency(d.consultationFee || 0)}<br>
-                    <strong>Works:</strong> ${schedText}
+                    <strong>Working Days:</strong> ${schedText}
                 </div>
                 <div style="margin-top: 12px; font-size: 12px; color: var(--color-accent); font-weight: bold; text-align: right;">
-                    Click to select &rarr;
+                    Select &amp; Schedule &rarr;
                 </div>
             </div>
             `;
@@ -92,7 +105,80 @@ window.selectDoctor = async function(id) {
     document.getElementById('s2-doc-avatar').innerText = selectedDoctor.photoInitials || 'DR';
     document.getElementById('s2-doc-name').innerText = utils.formatDoctorName(selectedDoctor.name);
     document.getElementById('s2-doc-spec').innerText = selectedDoctor.specialization;
-    nextStep(1);
+    
+    // Render distinct Upcoming vs Past schedules for this doctor
+    renderDoctorScheduleOverview(selectedDoctor);
+
+    // Auto-select earliest upcoming date if available
+    const avail = utils.getNextDoctorAvailability(selectedDoctor);
+    if (avail.isAvailable && avail.nextSchedule) {
+        document.getElementById('b-date').value = avail.nextSchedule.dateStr;
+        await window.loadSlots();
+    } else {
+        document.getElementById('b-date').value = '';
+        document.getElementById('b-slots').innerHTML = '<div style="grid-column: 1/-1; color: var(--color-text-muted); font-size: 14px; text-align: center; padding: 12px; background: var(--color-bg); border-radius: var(--radius-sm);">Select a date to view slots.</div>';
+    }
+
+    window.nextStep(1);
+};
+
+function renderDoctorScheduleOverview(doctor) {
+    const overviewContainer = document.getElementById('doctor-schedule-overview');
+    if (!overviewContainer) return;
+
+    const avail = utils.getNextDoctorAvailability(doctor);
+
+    let upcomingHtml = '';
+    if (avail.upcomingSchedules.length > 0) {
+        upcomingHtml = `
+            <div style="margin-bottom: 16px;">
+                <h4 style="font-size: 13px; color: var(--color-primary); text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                    📅 Upcoming Available Schedules (Next 7 Days)
+                </h4>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    ${avail.upcomingSchedules.map(s => `
+                        <button type="button" class="btn btn-sm btn-outline schedule-chip" onclick="pickScheduleDate('${s.dateStr}')" style="padding: 6px 12px; font-size: 12px; text-align: left; border-color: ${s.isActive ? 'var(--color-accent)' : 'var(--color-border)'};">
+                            <strong>${s.dayName} (${s.formattedDate})</strong><br>
+                            <span style="color: var(--color-text-muted);">${utils.formatTime(s.start)} - ${utils.formatTime(s.end)}</span>
+                            ${s.isActive ? '<span class="badge badge-success" style="margin-left: 4px; font-size: 10px;">In Progress</span>' : ''}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    } else {
+        upcomingHtml = `
+            <div class="alert alert-warning" style="margin-bottom: 16px; font-size: 13px;">
+                ⚠️ No upcoming clinic schedules found for this doctor in the next 7 days.
+            </div>
+        `;
+    }
+
+    let pastHtml = '';
+    if (avail.pastSchedules.length > 0) {
+        pastHtml = `
+            <div style="opacity: 0.65; border-top: 1px dashed var(--color-border); padding-top: 12px;">
+                <h4 style="font-size: 12px; color: var(--color-text-muted); text-transform: uppercase; margin-bottom: 8px;">
+                    Past Schedules This Week
+                </h4>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    ${avail.pastSchedules.map(s => `
+                        <div style="padding: 6px 10px; font-size: 11px; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-text-muted);">
+                            <span style="text-decoration: line-through;">${s.dayName} (${s.formattedDate}): ${utils.formatTime(s.start)} - ${utils.formatTime(s.end)}</span>
+                            <span class="badge badge-neutral" style="margin-left: 4px; font-size: 9px;">Completed</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    overviewContainer.innerHTML = upcomingHtml + pastHtml;
+}
+
+window.pickScheduleDate = async function(dateStr) {
+    document.getElementById('b-date').value = dateStr;
+    await window.loadSlots();
 };
 
 window.loadSlots = async function() {
@@ -109,7 +195,7 @@ window.loadSlots = async function() {
     }
 
     grid.innerHTML = slots.map(s => `
-        <button class="slot-btn" ${!s.available ? 'disabled' : ''} onclick="selectSlot('${s.time}', this)">${utils.formatTime(s.time)}</button>
+        <button type="button" class="slot-btn ${s.available ? '' : 'disabled'}" ${!s.available ? 'disabled' : ''} onclick="selectSlot('${s.time}', this)">${utils.formatTime(s.time)}</button>
     `).join('');
 };
 
@@ -117,6 +203,7 @@ window.selectSlot = function(time, btn) {
     document.querySelectorAll('#b-slots .slot-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('b-time').value = time;
+    utils.showAlert('book-alert', '', '');
 };
 
 window.updateCharCount = function() {
@@ -133,12 +220,16 @@ window.nextStep = function(step) {
         return utils.showToast('Please select a doctor first.', 'danger');
     }
     if (step === 2) {
-        if (!document.getElementById('b-date').value || !document.getElementById('b-time').value) {
+        const dateVal = document.getElementById('b-date').value;
+        const timeVal = document.getElementById('b-time').value;
+        if (!dateVal || !timeVal) {
+            utils.showAlert('book-alert', 'danger', 'Please select both an appointment date and an available time slot.');
             return utils.showToast('Please select a date and time slot.', 'danger');
         }
     }
     if (step === 3) {
         if (document.getElementById('b-reason').value.length < 10) {
+            utils.showAlert('book-alert', 'danger', 'Reason for visit must be at least 10 characters.');
             return utils.showToast('Reason must be at least 10 characters.', 'danger');
         }
         document.getElementById('r-doc').innerText = utils.formatDoctorName(selectedDoctor.name);
@@ -150,20 +241,28 @@ window.nextStep = function(step) {
         document.getElementById('r-reason').innerText = utils.escapeHTML(document.getElementById('b-reason').value);
     }
 
-    document.getElementById(`step-${step}`).classList.remove('active');
-    document.getElementById(`step-${step+1}`).classList.add('active');
+    const cur = document.getElementById(`step-${step}`);
+    const next = document.getElementById(`step-${step + 1}`);
+    if (cur) cur.classList.remove('active');
+    if (next) next.classList.add('active');
     updateStepIndicator(step + 1);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
 window.prevStep = function(step) {
-    document.getElementById(`step-${step}`).classList.remove('active');
-    document.getElementById(`step-${step-1}`).classList.add('active');
+    utils.showAlert('book-alert', '', '');
+    const cur = document.getElementById(`step-${step}`);
+    const prev = document.getElementById(`step-${step - 1}`);
+    if (cur) cur.classList.remove('active');
+    if (prev) prev.classList.add('active');
     updateStepIndicator(step - 1);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
 function updateStepIndicator(step) {
     for(let i=1; i<=4; i++) {
         const ind = document.getElementById(`step-ind-${i}`);
+        if (!ind) continue;
         ind.className = 'w-step';
         if (i < step) ind.classList.add('completed');
         if (i === step) ind.classList.add('active');
