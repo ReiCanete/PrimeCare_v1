@@ -1,6 +1,131 @@
 // API Layer - Abstracts data access so we can easily swap to PHP/fetch later.
+//
+// =============================================================================
+// PHASE 5.1 MIGRATION ARCHITECTURE & GUIDELINES FOR FUTURE PHASES
+// =============================================================================
+// All frontend controllers call methods on the global `api` object (e.g.,
+// `await api.getDoctors()`, `await api.bookAppointment(data)`).
+//
+// To migrate a module in Phase 5.2+ without rewriting frontend controllers:
+// 1. Create the PHP endpoint in `api/` returning the standard JSON envelope:
+//    `{ "success": true|false, "message": "...", "data": ... }`
+// 2. Enable the corresponding module flag in `api._backendConfig.modules`.
+// 3. Inside the existing `api.<methodName>` function, check the module flag:
+//      if (this._backendConfig.modules.patients) {
+//          const res = await this._request('patients.php', { method: 'GET', params: filters });
+//          return res.data;
+//      }
+// 4. Keep the existing function name, parameter signature, and return shape identical
+//    so the UI controllers (`js/*.js`) require zero changes.
+// =============================================================================
 
 const api = {
+    // ==========================================
+    // 0. PHP BACKEND TRANSPORT & HEALTH CHECK (Phase 5.1)
+    // ==========================================
+    _backendConfig: {
+        // Feature flags for incremental module migration in Phase 5.2+.
+        // All flags remain `false` in Phase 5.1 so existing localStorage logic runs unchanged.
+        modules: {
+            auth: false,
+            users: false,
+            publicData: false,
+            patients: false,
+            doctors: false,
+            appointments: false,
+            clinical: false,
+            wards: false,
+            billing: false,
+            reports: false,
+            patientPortal: false
+        }
+    },
+
+    /**
+     * Resolves an API endpoint path relative to the current HTML page location
+     * (handles root public pages vs `/staff/*` and `/patient/*` subfolders).
+     */
+    _getApiUrl: function(endpoint, queryParams = null) {
+        const path = (typeof window !== 'undefined' && window.location && window.location.pathname) ? window.location.pathname : '';
+        const isSubfolder = path.includes('/staff/') || path.includes('/patient/');
+        const basePath = isSubfolder ? '../api' : 'api';
+        const cleanEndpoint = String(endpoint || 'index.php').replace(/^\/+/, '');
+        let url = `${basePath}/${cleanEndpoint}`;
+
+        if (queryParams && typeof queryParams === 'object') {
+            const searchParams = new URLSearchParams();
+            Object.entries(queryParams).forEach(([key, val]) => {
+                if (val !== undefined && val !== null && val !== '') {
+                    searchParams.append(key, String(val));
+                }
+            });
+            const qs = searchParams.toString();
+            if (qs) {
+                url += (url.includes('?') ? '&' : '?') + qs;
+            }
+        }
+        return url;
+    },
+
+    /**
+     * Standardized HTTP client for communicating with PrimeCare PHP endpoints.
+     * Always returns `{ success: boolean, message: string, data: any, status: number }`.
+     */
+    _request: async function(endpoint, options = {}) {
+        const method = (options.method || 'GET').toUpperCase();
+        const url = this._getApiUrl(endpoint, options.params || null);
+
+        const fetchOptions = {
+            method,
+            headers: {
+                'Accept': 'application/json',
+                ...(options.headers || {})
+            },
+            credentials: 'same-origin'
+        };
+
+        if (options.body !== undefined && method !== 'GET' && method !== 'HEAD') {
+            fetchOptions.headers['Content-Type'] = 'application/json; charset=utf-8';
+            fetchOptions.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
+        }
+
+        try {
+            const response = await fetch(url, fetchOptions);
+            const payload = await response.json().catch(() => null);
+
+            if (!payload || typeof payload !== 'object') {
+                return {
+                    success: false,
+                    message: `Invalid JSON response from server (HTTP ${response.status}).`,
+                    data: null,
+                    status: response.status
+                };
+            }
+
+            return {
+                success: Boolean(payload.success),
+                message: payload.message || (response.ok ? 'Success' : 'Request failed'),
+                data: payload.data !== undefined ? payload.data : null,
+                status: response.status
+            };
+        } catch (err) {
+            return {
+                success: false,
+                message: 'Unable to reach the PrimeCare backend server.',
+                data: null,
+                status: 0
+            };
+        }
+    },
+
+    /**
+     * Calls the Phase 5.1 PHP health-check endpoint (`api/health.php`) to verify
+     * Apache PHP execution and MySQL database connectivity.
+     */
+    checkBackendHealth: async function() {
+        return await this._request('health.php', { method: 'GET' });
+    },
+
     // ==========================================
     // 1. GENERIC HELPERS & SYSTEM
     // ==========================================

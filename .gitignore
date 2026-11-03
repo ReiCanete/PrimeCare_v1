@@ -1,5 +1,6 @@
 .env
 .env.*
+api/config/config.local.php
 vendor/
 node_modules/
 *.log
