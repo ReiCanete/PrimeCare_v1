@@ -387,11 +387,12 @@ window.openReschedule = async function(id) {
 window.loadRescheduleSlots = async function() {
     const docId = document.getElementById('res-docId').value;
     const dateStr = document.getElementById('res-date').value;
+    const excludeId = document.getElementById('res-id').value || null;
     const grid = document.getElementById('res-slots');
     document.getElementById('res-time').value = '';
 
     if (!dateStr) return;
-    const slots = await api.getAvailableSlots(docId, dateStr);
+    const slots = await api.getAvailableSlots(docId, dateStr, excludeId);
     if (slots.length === 0) {
         grid.innerHTML = '<div style="grid-column: 1/-1; color: var(--color-danger); font-size: 14px; text-align: center; padding: 12px; background: var(--color-danger-bg); border-radius: var(--radius-sm);">No available slots on this day.</div>';
         return;

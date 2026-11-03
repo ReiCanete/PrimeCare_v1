@@ -33,7 +33,7 @@ const api = {
             publicData: false,
             patients: true, // Phase 5.3: patient management & self-registration handled by PHP (api/patients/*.php)
             doctors: true,  // Phase 5.5: doctor management, departments & scheduling handled by PHP (api/doctors/*.php)
-            appointments: false,
+            appointments: true, // Phase 5.6: appointment management, online booking & pre-visit forms handled by PHP (api/appointments/*.php)
             clinical: false,
             wards: false,
             billing: false,
@@ -181,6 +181,7 @@ const api = {
     _patientsFetchPromise: null,
     _lastNextPreviewId: null,
     _doctorsFetchPromise: null,
+    _appointmentsFetchPromise: null,
 
     /**
      * Helper used by unmigrated async methods (dashboard stats, appointments, clinical, billing)
@@ -250,6 +251,72 @@ const api = {
             if (Array.isArray(list) && list.length > 0) return list;
         } catch (e) {}
         return this.getAll('doctors');
+    },
+
+    /**
+     * Mirrors MySQL appointment records (and any embedded preVisitForm) into localStorage
+     * (`primecare_appointments` and `primecare_preVisitForms`) so still-unmigrated synchronous
+     * helpers continue resolving current appointment data.
+     */
+    _syncAppointmentCache: function(apptOrList, options = {}) {
+        try {
+            let current = this.getAll('appointments');
+            let forms = this.getAll('preVisitForms');
+            if (options.replaceAll && Array.isArray(apptOrList)) {
+                localStorage.setItem('primecare_appointments', JSON.stringify(apptOrList));
+                apptOrList.forEach(item => {
+                    if (item && item.preVisitForm) {
+                        const fIdx = forms.findIndex(f => f.appointmentId === item.id);
+                        if (fIdx !== -1) forms[fIdx] = item.preVisitForm;
+                        else forms.push(item.preVisitForm);
+                    }
+                });
+                localStorage.setItem('primecare_preVisitForms', JSON.stringify(forms));
+                return;
+            }
+            if (options.deletedId) {
+                current = current.filter(a => a.id !== options.deletedId);
+            }
+            const items = Array.isArray(apptOrList) ? apptOrList : (apptOrList ? [apptOrList] : []);
+            items.forEach(item => {
+                if (!item || !item.id) return;
+                const idx = current.findIndex(a => a.id === item.id);
+                if (idx !== -1) {
+                    current[idx] = { ...current[idx], ...item };
+                } else {
+                    current.push(item);
+                }
+                if (item.preVisitForm) {
+                    const fIdx = forms.findIndex(f => f.appointmentId === item.id);
+                    if (fIdx !== -1) forms[fIdx] = item.preVisitForm;
+                    else forms.push(item.preVisitForm);
+                }
+            });
+            localStorage.setItem('primecare_appointments', JSON.stringify(current));
+            localStorage.setItem('primecare_preVisitForms', JSON.stringify(forms));
+        } catch (e) {
+            // Ignore localStorage quota/serialization errors
+        }
+    },
+
+    /**
+     * Helper used by unmigrated async methods (dashboard stats, billing, reports, user/patient deletion checks)
+     * to ensure appointments are fetched from MySQL before computing aggregates or checking unbilled items.
+     */
+    _getAppointmentsListForMockJoin: async function() {
+        if (!this._backendConfig.modules.appointments) {
+            return this.getAll('appointments');
+        }
+        if (!this._appointmentsFetchPromise) {
+            this._appointmentsFetchPromise = this.searchAppointments({}).finally(() => {
+                setTimeout(() => { this._appointmentsFetchPromise = null; }, 1500);
+            });
+        }
+        try {
+            const list = await this._appointmentsFetchPromise;
+            if (Array.isArray(list)) return list;
+        } catch (e) {}
+        return this.getAll('appointments');
     },
 
     // ==========================================
@@ -620,7 +687,8 @@ const api = {
     deleteUser: async function(id) {
         const currentUser = await this.getCurrentUser();
         if (currentUser.id === id) return { success: false, message: 'You cannot delete yourself.' };
-        const appts = this.getAll('appointments').filter(a => a.createdBy === id);
+        const allAppts = await this._getAppointmentsListForMockJoin();
+        const appts = allAppts.filter(a => a.createdBy === id);
         const logs = this.getAll('auditLog').filter(l => l.userId === id);
         if (appts.length > 0 || logs.length > 0) return { success: false, message: 'Cannot delete user with existing system records. Please deactivate them instead.' };
         this.remove('users', id);
@@ -644,7 +712,7 @@ const api = {
     // ==========================================
    getStats: async function() {
         const patients = await this._getPatientsListForMockJoin(); const doctors = await this._getDoctorsListForMockJoin();
-        const appointments = this.getAll('appointments'); const bills = this.getAll('bills');
+        const appointments = await this._getAppointmentsListForMockJoin(); const bills = this.getAll('bills');
         const beds = this.getAll('beds'); const labs = this.getAll('labResults');
         const admissions = this.getAll('admissions');
         const todayStr = new Date().toLocaleDateString('en-CA');
@@ -662,6 +730,15 @@ const api = {
     },
     getTodaysAppointments: async function() {
         const todayStr = new Date().toLocaleDateString('en-CA');
+        if (this._backendConfig.modules.appointments) {
+            const list = await this.searchAppointments({
+                dateFrom: todayStr,
+                dateTo: todayStr,
+                sortBy: 'datetime',
+                sortDir: 'asc'
+            });
+            return list.slice().sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+        }
         const appts = this.getAll('appointments').filter(a => a.date === todayStr);
         const patients = await this._getPatientsListForMockJoin(); const doctors = await this._getDoctorsListForMockJoin();
         return appts.map(a => {
@@ -675,7 +752,7 @@ const api = {
         return patients.filter(p => p.status === 'pending').slice(0, limit);
     },
     getAppointmentsPerDay: async function(days = 7) {
-        const appts = this.getAll('appointments'); const result = [];
+        const appts = await this._getAppointmentsListForMockJoin(); const result = [];
         for (let i = days - 1; i >= 0; i--) {
             const d = new Date(); d.setDate(d.getDate() - i);
             const dateStr = d.toLocaleDateString('en-CA');
@@ -686,8 +763,9 @@ const api = {
     getRecentActivity: async function(limit = 5) {
         let activities = []; const todayStr = new Date().toLocaleDateString('en-CA');
         const patients = await this._getPatientsListForMockJoin();
+        const appts = await this._getAppointmentsListForMockJoin();
         patients.filter(p => p.createdAt === todayStr).forEach(p => activities.push({ icon: '👤', text: `New patient registered: ${p.fullName}`, time: 'Today' }));
-        this.getAll('appointments').filter(a => a.date === todayStr && a.status === 'Completed').forEach(a => activities.push({ icon: '✅', text: `Appointment completed for ${a.patientId}`, time: 'Today' }));
+        appts.filter(a => a.date === todayStr && a.status === 'Completed').forEach(a => activities.push({ icon: '✅', text: `Appointment completed for ${a.patientId}`, time: 'Today' }));
         this.getAll('bills').filter(b => b.date === todayStr && b.status === 'Paid').forEach(b => activities.push({ icon: '💳', text: `Payment received: ${b.id}`, time: 'Today' }));
         return activities.slice(0, limit);
     },
@@ -1011,14 +1089,16 @@ const api = {
         return { success: true, message: 'Patient application rejected.' };
     },
     deletePatient: async function(id) {
-        const appts = this.getAll('appointments').filter(a => a.patientId === id);
-        const records = this.getAll('medicalRecords').filter(r => r.patientId === id);
-        const bills = this.getAll('bills').filter(b => b.patientId === id);
-        const rxs = this.getAll('prescriptions').filter(r => r.patientId === id);
-        const labs = this.getAll('labResults').filter(l => l.patientId === id);
-        const adms = this.getAll('admissions').filter(a => a.patientId === id);
-        if (appts.length > 0 || records.length > 0 || bills.length > 0 || rxs.length > 0 || labs.length > 0 || adms.length > 0) {
-            return { success: false, message: 'Cannot delete patient. They have existing records.' };
+        if (!this._backendConfig.modules.patients) {
+            const appts = this.getAll('appointments').filter(a => a.patientId === id);
+            const records = this.getAll('medicalRecords').filter(r => r.patientId === id);
+            const bills = this.getAll('bills').filter(b => b.patientId === id);
+            const rxs = this.getAll('prescriptions').filter(r => r.patientId === id);
+            const labs = this.getAll('labResults').filter(l => l.patientId === id);
+            const adms = this.getAll('admissions').filter(a => a.patientId === id);
+            if (appts.length > 0 || records.length > 0 || bills.length > 0 || rxs.length > 0 || labs.length > 0 || adms.length > 0) {
+                return { success: false, message: 'Cannot delete patient. They have existing records.' };
+            }
         }
         if (this._backendConfig.modules.patients) {
             const p = this.getById('patients', id);
@@ -1044,9 +1124,12 @@ const api = {
     getPatientSummary: async function(id) {
         const patient = await this.getPatientById(id);
         if (!patient) return null;
+        const appts = this._backendConfig.modules.appointments
+            ? await this.searchAppointments({ patientId: id, sortBy: 'datetime', sortDir: 'desc' })
+            : this.getAll('appointments').filter(a => a.patientId === id);
         return {
             ...patient,
-            appointments: this.getAll('appointments').filter(a => a.patientId === id),
+            appointments: appts,
             medicalRecords: this.getAll('medicalRecords').filter(r => r.patientId === id),
             bills: this.getAll('bills').filter(b => b.patientId === id)
         };
@@ -1297,7 +1380,18 @@ const api = {
         }
         return { success: false, message: res.message || 'Failed to delete schedule.' };
     },
-    getAvailableSlots: async function(doctorId, dateString) {
+    getAvailableSlots: async function(doctorId, dateString, excludeId = null) {
+        if (this._backendConfig.modules.appointments) {
+            if (!doctorId || !dateString) return [];
+            const params = { doctorId, date: dateString };
+            if (excludeId) params.excludeId = excludeId;
+            const res = await this._request('appointments/slots.php', { method: 'GET', params });
+            if (res.success && res.data && Array.isArray(res.data.slots)) {
+                return res.data.slots;
+            }
+            return [];
+        }
+
         const doc = await this.getDoctorById(doctorId);
         if (!doc || doc.status !== 'active') return [];
         const parts = dateString.split('-');
@@ -1315,7 +1409,7 @@ const api = {
         const now = new Date();
         const currentHour = now.getHours();
         const currentMin = now.getMinutes();
-        const existingAppts = this.getAll('appointments').filter(a => a.doctorId === doctorId && a.date === dateString && a.status !== 'Cancelled');
+        const existingAppts = this.getAll('appointments').filter(a => a.doctorId === doctorId && a.date === dateString && a.status !== 'Cancelled' && (!excludeId || a.id !== excludeId));
 
         while (hour < endHour || (hour === endHour && min < endMin)) {
             const timeStr = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
@@ -1330,7 +1424,32 @@ const api = {
         }
         return slots;
     },
-    searchAppointments: async function(filters) {
+    searchAppointments: async function(filters = {}) {
+        if (this._backendConfig.modules.appointments) {
+            const params = {};
+            if (filters.keyword) params.keyword = filters.keyword;
+            if (filters.doctorId && filters.doctorId !== 'All') params.doctorId = filters.doctorId;
+            if (filters.patientId && filters.patientId !== 'All') params.patientId = filters.patientId;
+            if (filters.status && filters.status !== 'All') params.status = filters.status;
+            if (filters.type && filters.type !== 'All') params.type = filters.type;
+            if (filters.dateFrom) params.dateFrom = filters.dateFrom;
+            if (filters.dateTo) params.dateTo = filters.dateTo;
+            if (filters.scope) params.scope = filters.scope;
+            if (filters.sortBy) params.sortBy = filters.sortBy;
+            if (filters.sortDir) params.sortDir = filters.sortDir;
+
+            const isUnfiltered = !params.keyword && !params.doctorId && !params.patientId && !params.status && !params.type && !params.dateFrom && !params.dateTo && !params.scope;
+            const res = await this._request('appointments/list.php', { method: 'GET', params });
+            if (res.success && res.data && Array.isArray(res.data.appointments)) {
+                this._syncAppointmentCache(res.data.appointments, isUnfiltered);
+                if (res.data.counts) {
+                    this._lastAppointmentCounts = res.data.counts;
+                }
+                return res.data.appointments;
+            }
+            return [];
+        }
+
         let appts = this.getAll('appointments');
         const patients = await this._getPatientsListForMockJoin();
         const doctors = await this._getDoctorsListForMockJoin();
@@ -1363,7 +1482,39 @@ const api = {
         }
         return appts;
     },
+    getAppointmentById: async function(id) {
+        if (!id) return null;
+        if (this._backendConfig.modules.appointments) {
+            const res = await this._request('appointments/get.php', { method: 'GET', params: { id } });
+            if (res.success && res.data && res.data.appointment) {
+                this._syncAppointmentCache(res.data.appointment);
+                return res.data.appointment;
+            }
+            return null;
+        }
+        return this.getById('appointments', id);
+    },
     bookAppointment: async function(data) {
+        if (this._backendConfig.modules.appointments) {
+            const res = await this._request('appointments/create.php', {
+                method: 'POST',
+                body: data
+            });
+            if (res.success && res.data && res.data.appointment) {
+                const appt = res.data.appointment;
+                this._syncAppointmentCache(appt);
+                this.createNotification(
+                    appt.patientId,
+                    'appointment',
+                    `Appointment ${appt.status}`,
+                    `Your appointment with ${appt.doctorName || appt.doctorId} on ${appt.date} at ${appt.time} is ${appt.status}.`,
+                    'book-appointment.html?tab=my'
+                );
+                return { success: true, message: res.message || 'Appointment scheduled successfully.', appointment: appt };
+            }
+            return { success: false, message: res.message || 'Failed to schedule appointment.' };
+        }
+
         const patient = await this.getPatientById(data.patientId);
         if (!patient) return { success: false, message: 'Patient not found.' };
         if (patient.status !== 'verified') return { success: false, message: 'Only verified patients can book appointments.' };
@@ -1398,7 +1549,32 @@ const api = {
 
         return { success: true, message: 'Appointment scheduled successfully.', appointment: saved };
     },
-    rescheduleAppointment: async function(id, newDate, newTime) {
+    rescheduleAppointment: async function(id, newDate, newTime, extra = {}) {
+        if (this._backendConfig.modules.appointments) {
+            const payload = { id, date: newDate, time: newTime };
+            if (extra && extra.type) payload.type = extra.type;
+            if (extra && extra.reason !== undefined) payload.reason = extra.reason;
+            if (extra && extra.notes !== undefined) payload.notes = extra.notes;
+
+            const res = await this._request('appointments/reschedule.php', {
+                method: 'POST',
+                body: payload
+            });
+            if (res.success && res.data && res.data.appointment) {
+                const appt = res.data.appointment;
+                this._syncAppointmentCache(appt);
+                this.createNotification(
+                    appt.patientId,
+                    'appointment',
+                    'Appointment Rescheduled',
+                    `Your appointment (${appt.id}) with ${appt.doctorName || appt.doctorId} was rescheduled to ${appt.date} at ${appt.time}.`,
+                    'book-appointment.html?tab=my'
+                );
+                return { success: true, message: res.message || 'Appointment rescheduled successfully.', appointment: appt };
+            }
+            return { success: false, message: res.message || 'Failed to reschedule appointment.' };
+        }
+
         const appt = this.getById('appointments', id);
         if (!appt) return { success: false, message: 'Appointment not found.' };
         const oldStatus = appt.status;
@@ -1416,6 +1592,26 @@ const api = {
         }
     },
     cancelAppointment: async function(id, reason) {
+        if (this._backendConfig.modules.appointments) {
+            const res = await this._request('appointments/status.php', {
+                method: 'POST',
+                body: { id, status: 'Cancelled', cancelReason: reason }
+            });
+            if (res.success && res.data && res.data.appointment) {
+                const appt = res.data.appointment;
+                this._syncAppointmentCache(appt);
+                this.createNotification(
+                    appt.patientId,
+                    'appointment',
+                    'Appointment Cancelled',
+                    `Your appointment on ${appt.date} was cancelled. Reason: ${appt.cancelReason || reason}`,
+                    'book-appointment.html?tab=my'
+                );
+                return { success: true, message: res.message || 'Appointment cancelled.', appointment: appt };
+            }
+            return { success: false, message: res.message || 'Failed to cancel appointment.' };
+        }
+
         if (!reason || reason.length < 5) return { success: false, message: 'Cancellation reason must be at least 5 characters.' };
         let appts = this.getAll('appointments');
         const idx = appts.findIndex(a => a.id === id);
@@ -1429,7 +1625,33 @@ const api = {
 
         return { success: true, message: 'Appointment cancelled.' };
     },
-    updateAppointmentStatus: async function(id, status) {
+    updateAppointmentStatus: async function(id, status, cancelReason = null) {
+        if (this._backendConfig.modules.appointments) {
+            const body = { id, status };
+            if (cancelReason) body.cancelReason = cancelReason;
+            else if (status === 'Cancelled') body.allowDefaultReason = true;
+
+            const res = await this._request('appointments/status.php', {
+                method: 'POST',
+                body
+            });
+            if (res.success && res.data && res.data.appointment) {
+                const appt = res.data.appointment;
+                this._syncAppointmentCache(appt);
+                if (status === 'Confirmed') {
+                    this.createNotification(
+                        appt.patientId,
+                        'appointment',
+                        'Appointment Confirmed',
+                        `Your appointment with ${appt.doctorName || appt.doctorId} on ${appt.date} is confirmed.`,
+                        'book-appointment.html?tab=my'
+                    );
+                }
+                return { success: true, message: res.message || 'Status updated.', appointment: appt };
+            }
+            return { success: false, message: res.message || 'Failed to update status.' };
+        }
+
         let appts = this.getAll('appointments');
         const idx = appts.findIndex(a => a.id === id);
         if (idx === -1) return { success: false, message: 'Not found.' };
@@ -1835,9 +2057,15 @@ const api = {
             if (days < 1) days = 1;
             items.push({ type: 'Room', description: `Room Charge (${ward ? ward.name : 'Unknown'}) - ${days} days`, qty: days, unitPrice: rate, amount: days * rate, sourceType: 'admissions', sourceId: a.id });
         });
-        this.getAll('appointments').filter(a => a.patientId === patientId && a.status === 'Completed' && !a.billed).forEach(a => {
-            const doc = this.getById('doctors', a.doctorId);
-            if (doc) items.push({ type: 'Professional Fee', description: `Consultation - ${doc.name}`, qty: 1, unitPrice: doc.consultationFee, amount: doc.consultationFee, sourceType: 'appointments', sourceId: a.id });
+        const appts = await this._getAppointmentsListForMockJoin();
+        const doctors = await this._getDoctorsListForMockJoin();
+        appts.filter(a => a.patientId === patientId && a.status === 'Completed' && !a.billed).forEach(a => {
+            const doc = doctors.find(d => d.id === a.doctorId) || this.getById('doctors', a.doctorId);
+            const docName = a.doctorName || (doc ? doc.name : 'Unknown Doctor');
+            const fee = (a.fee !== undefined && a.fee !== null) ? a.fee : (doc ? doc.consultationFee : 0);
+            if (doc || a.doctorName) {
+                items.push({ type: 'Professional Fee', description: `Consultation - ${docName}`, qty: 1, unitPrice: fee, amount: fee, sourceType: 'appointments', sourceId: a.id });
+            }
         });
         const medPrices = this.getAll('medicinePrices')[0] || {};
         this.getAll('prescriptions').filter(r => r.patientId === patientId && r.status === 'Dispensed' && !r.billed).forEach(r => {
@@ -2044,13 +2272,14 @@ const api = {
         }
         else if (type === 'appointments-summary') {
             columns = ['Date', 'Doctor', 'Type', 'Status', 'Count'];
-            const appts = this.getAll('appointments').filter(a => a.date >= dateFrom && a.date <= dateTo);
+            const allAppts = await this._getAppointmentsListForMockJoin();
+            const appts = allAppts.filter(a => a.date >= dateFrom && a.date <= dateTo);
             const doctors = await this._getDoctorsListForMockJoin();
             let statusCounts = { Confirmed: 0, Completed: 0, Cancelled: 0, Pending: 0 };
             
             appts.forEach(a => {
                 const d = doctors.find(x => x.id === a.doctorId);
-                rows.push([a.date, d ? d.name : 'Unknown', a.type, a.status, 1]);
+                rows.push([a.date, a.doctorName || (d ? d.name : 'Unknown'), a.type, a.status, 1]);
                 if (statusCounts[a.status] !== undefined) statusCounts[a.status]++;
             });
             summary = { 'Total Appointments': appts.length, 'Completed': statusCounts.Completed, 'Cancelled': statusCounts.Cancelled };
@@ -2077,7 +2306,8 @@ const api = {
         else if (type === 'doctor-workload') {
             columns = ['Doctor', 'Completed Appointments', 'Medical Records Written', 'Prescriptions Issued'];
             const docs = await this._getDoctorsListForMockJoin();
-            const appts = this.getAll('appointments').filter(a => a.date >= dateFrom && a.date <= dateTo && a.status === 'Completed');
+            const allAppts = await this._getAppointmentsListForMockJoin();
+            const appts = allAppts.filter(a => a.date >= dateFrom && a.date <= dateTo && a.status === 'Completed');
             const records = this.getAll('medicalRecords').filter(r => r.createdAt.split('T')[0] >= dateFrom && r.createdAt.split('T')[0] <= dateTo);
             const rxs = this.getAll('prescriptions').filter(r => r.date >= dateFrom && r.date <= dateTo);
             
@@ -2182,12 +2412,18 @@ const api = {
         const pid = ctx.patient.id;
         const todayStr = new Date().toLocaleDateString('en-CA');
         
-        const appts = this.getAll('appointments').filter(a => a.patientId === pid && a.date >= todayStr && a.status !== 'Cancelled' && a.status !== 'Completed').sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+        let appts = [];
+        if (this._backendConfig.modules.appointments) {
+            appts = await this.getMyAppointments({ scope: 'upcoming' });
+        } else {
+            appts = this.getAll('appointments').filter(a => a.patientId === pid && a.date >= todayStr && a.status !== 'Cancelled' && a.status !== 'Completed').sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+        }
+
         const labs = this.getAll('labResults').filter(l => l.patientId === pid && l.status === 'Completed').sort((a, b) => b.resultDate.localeCompare(a.resultDate)).slice(0, 3);
         const bills = this.getAll('bills').filter(b => b.patientId === pid && (b.status === 'Unpaid' || b.status === 'Partial'));
         const notifs = this.getAll('notifications').filter(n => n.patientId === pid).sort((a, b) => b.date.localeCompare(a.date));
 
-        const nextAppt = appts.length > 0 ? { ...appts[0], doctorName: (await this.getDoctorById(appts[0].doctorId))?.name } : null;
+        const nextAppt = appts.length > 0 ? { ...appts[0], doctorName: appts[0].doctorName || (await this.getDoctorById(appts[0].doctorId))?.name } : null;
         const unpaidTotal = bills.reduce((sum, b) => sum + b.balance, 0);
 
         return {
@@ -2200,9 +2436,23 @@ const api = {
         };
     },
 
-    getMyAppointments: async function(filters) {
+    getMyAppointments: async function(filters = {}) {
         const ctx = await this._getPatientContext();
         if (ctx.error) return [];
+
+        if (this._backendConfig.modules.appointments) {
+            const params = { my: 1 };
+            if (filters && filters.scope) params.scope = filters.scope;
+            if (filters && filters.type) params.type = filters.type;
+            if (filters && filters.status) params.status = filters.status;
+            const res = await this._request('appointments/list.php', { method: 'GET', params });
+            if (res.success && res.data && Array.isArray(res.data.appointments)) {
+                this._syncAppointmentCache(res.data.appointments);
+                return res.data.appointments;
+            }
+            return [];
+        }
+
         const todayStr = new Date().toLocaleDateString('en-CA');
         let appts = this.getAll('appointments').filter(a => a.patientId === ctx.patient.id);
         
@@ -2220,6 +2470,27 @@ const api = {
     bookMyAppointment: async function(data) {
         const ctx = await this._getPatientContext(true);
         if (ctx.error) return { success: false, message: ctx.error };
+
+        if (this._backendConfig.modules.appointments) {
+            const res = await this._request('appointments/create.php', {
+                method: 'POST',
+                body: { ...data, patientId: ctx.patient.id }
+            });
+            if (res.success && res.data && res.data.appointment) {
+                const appt = res.data.appointment;
+                this._syncAppointmentCache(appt);
+                this.createNotification(
+                    ctx.patient.id,
+                    'appointment',
+                    'Appointment Request Submitted',
+                    `Your request for ${appt.date} at ${appt.time} with ${appt.doctorName || appt.doctorId} is pending staff confirmation.`,
+                    'book-appointment.html?tab=my'
+                );
+                return { success: true, message: res.message || 'Appointment request submitted and is pending confirmation.', appointment: appt };
+            }
+            return { success: false, message: res.message || 'Failed to submit appointment request.' };
+        }
+
         if (ctx.patient.status !== 'verified') return { success: false, message: 'Only verified patients can book appointments. Your account is pending verification by hospital staff.' };
         if (!data.reason || data.reason.length < 10) return { success: false, message: 'Reason for visit must be at least 10 characters.' };
 
@@ -2241,6 +2512,10 @@ const api = {
     rescheduleMyAppointment: async function(id, newDate, newTime) {
         const ctx = await this._getPatientContext(true);
         if (ctx.error) return { success: false, message: ctx.error };
+
+        if (this._backendConfig.modules.appointments) {
+            return await this.rescheduleAppointment(id, newDate, newTime);
+        }
         
         const appt = this.getById('appointments', id);
         if (!appt || appt.patientId !== ctx.patient.id) return { success: false, message: 'Appointment not found.' };
@@ -2254,6 +2529,10 @@ const api = {
     cancelMyAppointment: async function(id, reason) {
         const ctx = await this._getPatientContext(true);
         if (ctx.error) return { success: false, message: ctx.error };
+
+        if (this._backendConfig.modules.appointments) {
+            return await this.cancelAppointment(id, reason);
+        }
 
         const appt = this.getById('appointments', id);
         if (!appt || appt.patientId !== ctx.patient.id) return { success: false, message: 'Appointment not found.' };
@@ -2393,6 +2672,19 @@ const api = {
     getMyTelehealthAppointments: async function() {
         const ctx = await this._getPatientContext();
         if (ctx.error) return [];
+
+        if (this._backendConfig.modules.appointments) {
+            const res = await this._request('appointments/list.php', {
+                method: 'GET',
+                params: { my: 1, scope: 'upcoming', type: 'telehealth' }
+            });
+            if (res.success && res.data && Array.isArray(res.data.appointments)) {
+                this._syncAppointmentCache(res.data.appointments);
+                return res.data.appointments;
+            }
+            return [];
+        }
+
         const todayStr = new Date().toLocaleDateString('en-CA');
         const doctors = await this._getDoctorsListForMockJoin();
         return this.getAll('appointments').filter(a => a.patientId === ctx.patient.id && a.type === 'telehealth' && a.date >= todayStr && (a.status === 'Confirmed' || a.status === 'Pending')).map(a => {
@@ -2404,6 +2696,31 @@ const api = {
     submitPreVisitForm: async function(appointmentId, form) {
         const ctx = await this._getPatientContext(true);
         if (ctx.error) return { success: false, message: ctx.error };
+
+        if (this._backendConfig.modules.appointments) {
+            const res = await this._request('appointments/pre-visit.php', {
+                method: 'POST',
+                body: { appointmentId, ...form }
+            });
+            if (res.success && res.data) {
+                if (res.data.appointment) {
+                    this._syncAppointmentCache(res.data.appointment);
+                } else if (res.data.form) {
+                    const cachedAppt = this.getById('appointments', appointmentId);
+                    if (cachedAppt) {
+                        this._syncAppointmentCache({ ...cachedAppt, preVisitForm: res.data.form });
+                    }
+                }
+                return {
+                    success: true,
+                    message: res.message || 'Pre-visit form submitted.',
+                    form: res.data.form || null,
+                    canJoin: res.data.canJoin || null
+                };
+            }
+            return { success: false, message: res.message || 'Failed to submit pre-visit form.' };
+        }
+
         if (!form.symptoms || form.symptoms.length < 5) return { success: false, message: 'Please describe your symptoms.' };
         if (!form.consent) return { success: false, message: 'You must consent to the telehealth session.' };
 
@@ -2416,12 +2733,41 @@ const api = {
     },
 
     getPreVisitForm: async function(appointmentId) {
+        if (!appointmentId) return undefined;
+        if (this._backendConfig.modules.appointments) {
+            const res = await this._request('appointments/pre-visit.php', {
+                method: 'GET',
+                params: { appointmentId }
+            });
+            if (res.success && res.data) {
+                if (res.data.form) {
+                    let forms = this.getAll('preVisitForms');
+                    const idx = forms.findIndex(f => f.appointmentId === appointmentId);
+                    if (idx !== -1) forms[idx] = res.data.form; else forms.push(res.data.form);
+                    localStorage.setItem('primecare_preVisitForms', JSON.stringify(forms));
+                    return res.data.form;
+                }
+                return undefined;
+            }
+            return undefined;
+        }
         return this.getAll('preVisitForms').find(f => f.appointmentId === appointmentId);
     },
 
     canJoinTelehealth: async function(appointmentId) {
         const ctx = await this._getPatientContext();
         if (ctx.error) return { allowed: false, reason: ctx.error };
+
+        if (this._backendConfig.modules.appointments) {
+            const res = await this._request('appointments/pre-visit.php', {
+                method: 'GET',
+                params: { appointmentId }
+            });
+            if (res.success && res.data && res.data.canJoin) {
+                return res.data.canJoin;
+            }
+            return { allowed: false, reason: res.message || 'Appointment not found.' };
+        }
 
         const appt = this.getById('appointments', appointmentId);
         if (!appt || appt.patientId !== ctx.patient.id) return { allowed: false, reason: 'Appointment not found.' };

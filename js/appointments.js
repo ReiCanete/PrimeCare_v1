@@ -168,7 +168,7 @@ window.openNewModal = function() {
 };
 
 window.openReschedule = async function(id) {
-    const a = await api.getById('appointments', id);
+    const a = (await api.getAppointmentById(id)) || (await api.getById('appointments', id));
     if (!a) return;
     openNewModal();
     document.getElementById('book-title').innerText = `Reschedule ${id}`;
@@ -184,6 +184,7 @@ window.openReschedule = async function(id) {
 window.loadSlots = async function() {
     const docId = document.getElementById('b-doctor').value;
     const dateStr = document.getElementById('b-date').value;
+    const excludeId = document.getElementById('b-id').value || null;
     const info = document.getElementById('b-doc-info');
     const grid = document.getElementById('b-slots');
     document.getElementById('b-time').value = '';
@@ -197,7 +198,7 @@ window.loadSlots = async function() {
 
     if (!dateStr) { grid.innerHTML = '<div style="grid-column: 1/-1; color: var(--color-text-muted); font-size: var(--fs-sm);">Select a date.</div>'; return; }
 
-    const slots = await api.getAvailableSlots(docId, dateStr);
+    const slots = await api.getAvailableSlots(docId, dateStr, excludeId);
     if (slots.length === 0) {
         grid.innerHTML = '<div style="grid-column: 1/-1; color: var(--color-danger); font-size: var(--fs-sm);">Doctor is not in clinic on this day or no slots available.</div>';
         return;
@@ -231,7 +232,7 @@ window.submitBooking = async function() {
 
     let res;
     if (id) {
-        res = await api.rescheduleAppointment(id, data.date, data.time);
+        res = await api.rescheduleAppointment(id, data.date, data.time, { type: data.type, reason: data.reason });
     } else {
         res = await api.bookAppointment(data);
     }
@@ -239,9 +240,10 @@ window.submitBooking = async function() {
     if (res.success) {
         document.getElementById('book-form-area').style.display = 'none';
         document.getElementById('book-success-area').style.display = 'block';
-        const p = await api.getPatientById(data.patientId);
-        const d = await api.getDoctorById(data.doctorId);
-        document.getElementById('book-success-msg').innerText = `${p ? p.fullName : 'Unknown'} with ${d ? utils.formatDoctorName(d.name) : 'Unknown'}, ${utils.formatDate(data.date)} at ${utils.formatTime(data.time)}`;
+        const appt = res.appointment;
+        const pName = appt && appt.patientName ? appt.patientName : ((await api.getPatientById(data.patientId))?.fullName || 'Unknown');
+        const dName = appt && appt.doctorName ? utils.formatDoctorName(appt.doctorName) : (utils.formatDoctorName((await api.getDoctorById(data.doctorId))?.name || 'Unknown'));
+        document.getElementById('book-success-msg').innerText = `${pName} with ${dName}, ${utils.formatDate(data.date)} at ${utils.formatTime(data.time)}`;
         await renderTable();
     } else {
         utils.showAlert('book-alert-container', 'danger', res.message);
@@ -257,43 +259,53 @@ window.updateStatus = async function(id, status) {
 };
 
 window.promptCancel = function(id) {
-    document.getElementById('c-id').value = id;
-    document.getElementById('c-reason').value = '';
+    const idEl = document.getElementById('can-id') || document.getElementById('c-id');
+    const reasonEl = document.getElementById('can-reason') || document.getElementById('c-reason');
+    const alertEl = document.getElementById('can-alert');
+    if (idEl) idEl.value = id;
+    if (reasonEl) reasonEl.value = '';
+    if (alertEl) alertEl.innerHTML = '';
     utils.openModal('cancel-modal');
 };
 
 window.submitCancel = async function() {
-    const id = document.getElementById('c-id').value;
-    const reason = document.getElementById('c-reason').value.trim();
+    const idEl = document.getElementById('can-id') || document.getElementById('c-id');
+    const reasonEl = document.getElementById('can-reason') || document.getElementById('c-reason');
+    const id = idEl ? idEl.value : '';
+    const reason = reasonEl ? reasonEl.value.trim() : '';
     const res = await api.cancelAppointment(id, reason);
     if (res.success) {
         utils.closeModal('cancel-modal');
         utils.showToast(res.message, 'success');
         await renderTable();
     } else {
-        utils.showToast(res.message, 'danger');
+        if (document.getElementById('can-alert')) {
+            utils.showAlert('can-alert', 'danger', res.message);
+        } else {
+            utils.showToast(res.message, 'danger');
+        }
     }
 };
 
 window.viewAppt = async function(id) {
-    const a = await api.getById('appointments', id);
+    const a = (await api.getAppointmentById(id)) || (await api.getById('appointments', id));
     if(!a) return;
-    const p = await api.getPatientById(a.patientId);
-    const d = await api.getDoctorById(a.doctorId);
+    const pName = a.patientName || (await api.getPatientById(a.patientId))?.fullName || 'Unknown';
+    const dName = a.doctorName ? utils.formatDoctorName(a.doctorName) : (utils.formatDoctorName((await api.getDoctorById(a.doctorId))?.name || 'Unknown'));
     
     document.getElementById('v-id').innerText = a.id;
     let badge = 'info'; if (a.status === 'Confirmed') badge = 'success'; if (a.status === 'Pending') badge = 'warning'; if (a.status === 'Cancelled') badge = 'danger';
     document.getElementById('v-status').innerHTML = `<span class="badge badge-${badge}">${a.status}</span>`;
     document.getElementById('v-date').innerText = utils.formatDate(a.date);
     document.getElementById('v-time').innerText = utils.formatTime(a.time);
-    document.getElementById('v-patient').innerText = p ? p.fullName : 'Unknown';
-    document.getElementById('v-doctor').innerText = d ? utils.formatDoctorName(d.name) : 'Unknown';
+    document.getElementById('v-patient').innerText = pName;
+    document.getElementById('v-doctor').innerText = dName;
     document.getElementById('v-type').innerText = a.type;
     document.getElementById('v-reason').innerText = utils.escapeHTML(a.reason);
     
     if (a.status === 'Cancelled') {
         document.getElementById('v-cancel-box').style.display = 'block';
-        document.getElementById('v-cancel').innerText = utils.escapeHTML(a.cancelReason);
+        document.getElementById('v-cancel').innerText = utils.escapeHTML(a.cancelReason || '');
     } else {
         document.getElementById('v-cancel-box').style.display = 'none';
     }
