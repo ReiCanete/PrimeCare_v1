@@ -35,8 +35,16 @@ async function initForm() {
     wards.forEach(w => wardSelect.add(new Option(w.name, w.name)));
     
     const idSelect = document.getElementById('idType');
-    const idTypes = await api.getIdTypes();
-    idTypes.forEach(type => idSelect.add(new Option(type, type)));
+    try {
+        const idTypes = await api.getIdTypes();
+        if (idSelect && Array.isArray(idTypes) && idTypes.length > 0) {
+            if (idSelect.options.length <= 1) {
+                idTypes.forEach(type => idSelect.add(new Option(type, type)));
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to load idTypes:', e);
+    }
 
     // Set Defaults
     const today = new Date().toLocaleDateString('en-CA');
@@ -75,6 +83,11 @@ async function initForm() {
 }
 
 async function updatePreviewId() {
+    if (api.getNextPatientPreviewId) {
+        const nextId = await api.getNextPatientPreviewId();
+        document.getElementById('preview-id').innerText = nextId;
+        return;
+    }
     const patients = await api.searchPatients({}); // Getting all to count
     const count = patients.length + 1;
     document.getElementById('preview-id').innerText = `P-${count.toString().padStart(3, '0')}`;
@@ -212,6 +225,13 @@ async function validateStep(step) {
                 isValid = false;
             }
         }
+    } else if (step === 5) {
+        const idType = document.getElementById('idType').value.trim();
+        const idNumber = document.getElementById('idNumber').value.trim();
+        if (idType && idNumber && await api.isIdTaken(idType, idNumber)) {
+            showFieldError('idNumber', 'This National ID is already registered to another patient.');
+            isValid = false;
+        }
     }
 
     if (!isValid) {
@@ -224,8 +244,8 @@ async function handleRegistration(e) {
     e.preventDefault();
     clearAllErrors();
 
-    // Validate all steps from 1 to 4 before final submission
-    for (let s = 1; s <= 4; s++) {
+    // Validate all steps from 1 to 5 before final submission
+    for (let s = 1; s <= 5; s++) {
         const valid = await validateStep(s);
         if (!valid) {
             setStep(s);

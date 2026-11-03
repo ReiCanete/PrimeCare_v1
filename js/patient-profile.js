@@ -34,10 +34,10 @@ function loadProfile() {
     document.getElementById('c-email').value = originalEmail;
     
     const parts = (p.address || '').split(', ');
-    document.getElementById('c-street').value = parts[0] || '';
-    document.getElementById('c-brgy').value = parts[1] || '';
-    document.getElementById('c-city').value = parts[2] || '';
-    document.getElementById('c-province').value = parts[3] || '';
+    document.getElementById('c-street').value = p.street || parts[0] || '';
+    document.getElementById('c-brgy').value = p.brgy || p.barangay || parts[1] || '';
+    document.getElementById('c-city').value = p.city || parts[2] || '';
+    document.getElementById('c-province').value = p.province || parts[3] || '';
 
     document.getElementById('c-em-name').value = p.emergencyContactName || '';
     document.getElementById('c-em-num').value = p.emergencyContactNumber || '';

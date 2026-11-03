@@ -169,65 +169,6 @@ async function renderTable() {
     document.getElementById('pagination').innerHTML = pageHTML;
 }
 
-async function renderTable() {
-    const allPatients = await api.searchPatients({ keyword: '', status: 'All', admitType: 'All' });
-    
-    document.getElementById('count-all').innerText = allPatients.length;
-    document.getElementById('count-pending').innerText = allPatients.filter(p => p.status === 'pending').length;
-    document.getElementById('count-verified').innerText = allPatients.filter(p => p.status === 'verified').length;
-    document.getElementById('count-rejected').innerText = allPatients.filter(p => p.status === 'rejected').length;
-
-    document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-    const activeChip = document.querySelector(`.chip[onclick="setStatusFilter('${state.status}')"]`);
-    if(activeChip) activeChip.classList.add('active');
-
-    const filtered = await api.searchPatients(state);
-    
-    document.querySelectorAll('th.sortable').forEach(th => th.classList.remove('asc', 'desc'));
-    const activeTh = document.querySelector(`th[onclick="setSort('${state.sortBy}')"]`);
-    if (activeTh) activeTh.classList.add(state.sortDir);
-
-    const totalPages = Math.ceil(filtered.length / state.limit);
-    if (state.page > totalPages && totalPages > 0) state.page = totalPages;
-    
-    const start = (state.page - 1) * state.limit;
-    const paginated = filtered.slice(start, start + state.limit);
-
-    const tbody = document.getElementById('table-body');
-    if (paginated.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--color-text-muted);">No patients found.</td></tr>`;
-    } else {
-        const user = await api.getCurrentUser();
-        const canEdit = user.role === 'admin' || user.role === 'staff';
-
-        tbody.innerHTML = paginated.map(p => {
-            let badge = 'success';
-            if (p.status === 'pending') badge = 'warning';
-            if (p.status === 'rejected') badge = 'danger';
-
-            return `
-            <tr>
-                <td><strong>${p.id}</strong></td>
-                <td>${utils.escapeHTML(p.fullName)}</td>
-                <td>${utils.calcAge(p.birthdate)} / ${p.sex[0]}</td>
-                <td><span class="badge badge-neutral">${p.admitType}</span></td>
-                <td>${utils.formatDate(p.dateAdmitted)}</td>
-                <td><span class="badge badge-${badge}">${p.status}</span></td>
-                <td class="actions-cell">
-                    <button class="btn btn-sm btn-outline" onclick="viewPatient('${p.id}')">View</button>
-                    ${canEdit ? `<button class="btn btn-sm btn-outline" style="margin-left: 0.25rem;" onclick="editPatient('${p.id}')">Edit</button>` : ''}
-                </td>
-            </tr>`;
-        }).join('');
-    }
-
-    let pageHTML = '';
-    for (let i = 1; i <= totalPages; i++) {
-        pageHTML += `<button class="page-btn ${i === state.page ? 'active' : ''}" onclick="setPage(${i})">${i}</button>`;
-    }
-    document.getElementById('pagination').innerHTML = pageHTML;
-}
-
 window.viewPatient = async function(id) {
     state.currentPatientId = id;
     const data = await api.getPatientSummary(id);
@@ -291,12 +232,17 @@ window.viewPatient = async function(id) {
     const isAdminStaff = user && (user.role === 'admin' || user.role === 'staff');
     
     if (data.status === 'pending' && isAdminStaff) {
-        document.getElementById('v-action-bar').style.display = 'flex';
+        document.getElementById('v-action-bar').style.display = 'block';
         document.getElementById('v-action-bar').innerHTML = `
-            <div><strong>Pending Verification</strong><br><span style="font-size: var(--fs-xs);">Review details and verify to allow portal access.</span></div>
-            <div style="display: flex; gap: 8px;">
-                <button class="btn btn-danger" onclick="promptReject()">Reject</button>
-                <button class="btn btn-success" onclick="confirmVerify()">Verify Patient</button>
+            <div class="verification-banner">
+                <div class="verification-banner-info">
+                    <span class="verification-banner-title">⚠️ Pending Staff Verification</span>
+                    <span class="verification-banner-desc">Review submitted identity and details before approving portal access.</span>
+                </div>
+                <div class="verification-banner-actions">
+                    <button class="btn btn-outline" style="border-color: var(--color-danger); color: var(--color-danger);" onclick="promptReject()">Reject</button>
+                    <button class="btn btn-success" onclick="confirmVerify()">Verify Patient</button>
+                </div>
             </div>
         `;
     } else {

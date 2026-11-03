@@ -1011,6 +1011,49 @@ th.sortable.desc::after { content: ' \2193'; opacity: 1; color: var(--color-acce
 [data-page="profile"] .form-control[type="password"] { letter-spacing: .1em; }
 #page-content .btn-primary:disabled { opacity: .55; }
 
+/* Pending Verification Action Banner inside Patient Modal */
+.verification-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  background: var(--warning-bg);
+  border: 1px solid var(--color-warning);
+  border-left: 4px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  margin-bottom: 20px;
+}
+.verification-banner-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.verification-banner-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-warning);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.verification-banner-desc {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+.verification-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.verification-banner-actions .btn {
+  height: 36px;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 /* ---------- 4. Patient Registration Stepper (Centered Circles) ---------- */
 .stepper-tracker-container {
   display: flex;

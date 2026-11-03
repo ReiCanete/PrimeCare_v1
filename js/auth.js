@@ -3,7 +3,7 @@
 document.addEventListener('DOMContentLoaded', async () => {
     const page = document.body.getAttribute('data-page');
     if (page === 'login') await initLogin();
-    if (page === 'register') initRegister();
+    if (page === 'register') await initRegister();
     if (page === 'forgot-password') initForgot();
 });
 
@@ -73,16 +73,22 @@ let currentStep = 1;
 const totalSteps = 5; // Step 6 is success
 let regData = {};
 
-function initRegister() {
-    // Populate ID Types
-    // Note: api.getIdTypes is not async in the provided api.js, but if it becomes async, this needs await.
-    // Assuming it remains sync as per instructions "Internal helpers can stay sync" but it's a public API.
-    // If it throws, it will be caught by the global error handler.
-    const idTypes = api.getIdTypes ? api.getIdTypes() : api.getAll('idTypes');
-    const idSelect = document.getElementById('idType');
-    idTypes.forEach(type => {
-        idSelect.add(new Option(type, type));
-    });
+async function initRegister() {
+    // Populate ID Types from backend (with fallback)
+    try {
+        const idTypes = api.getIdTypes ? await api.getIdTypes() : api.getAll('idTypes');
+        const idSelect = document.getElementById('idType');
+        if (idSelect && Array.isArray(idTypes) && idTypes.length > 0) {
+            // Keep the placeholder and only append options if not already populated in HTML
+            if (idSelect.options.length <= 1) {
+                idTypes.forEach(type => {
+                    idSelect.add(new Option(type, type));
+                });
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to dynamically load idTypes:', e);
+    }
 
     // Live Age Calculation
     document.getElementById('birthdate').addEventListener('change', (e) => {
@@ -157,8 +163,7 @@ async function nextStep(step) {
         if (mobileTaken) return showFieldError('mobile', 'Mobile already registered.');
         if (idTaken) return showFieldError('idNumber', 'ID already registered.');
         
-        // Send Demo Code (Assuming sendVerificationCode remains sync as it's not in the provided api.js, but if it is async, add await)
-        // If it's a simulated backend call, it should probably be async.
+        // Send Demo Code
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = Date.now() + (5 * 60 * 1000); // 5 mins
         sessionStorage.setItem('primecare_verification', JSON.stringify({ code, expiry, target: regData.mobile }));
@@ -229,7 +234,7 @@ function validateStep(step) {
 async function verifyAndRegister() {
     const code = document.getElementById('verificationCode').value;
     
-    // Inline verifyCode logic since it's not in the provided api.js
+    // Inline verifyCode logic
     const stored = JSON.parse(sessionStorage.getItem('primecare_verification'));
     let isValidCode = false;
     if (stored && stored.target === regData.mobile && stored.code === code && Date.now() <= stored.expiry) {
@@ -243,8 +248,7 @@ async function verifyAndRegister() {
     }
 
     try {
-        // Assuming registerPatient is async in the full api.js
-        const res = await api.registerPatientByStaff(regData); // Using the available function
+        const res = await (api.registerPatientSelf ? api.registerPatientSelf(regData) : api.registerPatientByStaff(regData));
         if (res.success) {
             document.getElementById('step5').classList.remove('active');
             document.getElementById('step6').classList.add('active');
@@ -266,7 +270,7 @@ function initForgot() {
         const u = document.getElementById('f-username').value;
         const em = document.getElementById('f-email').value;
         
-        const users = api.getAll('users'); // Assuming this remains sync as it's an internal helper
+        const users = api.getAll('users');
         const user = users.find(x => x.username === u && x.email === em);
         
         if (!user) {
@@ -275,7 +279,6 @@ function initForgot() {
         }
         
         resetTarget = u;
-        // Simulate sendVerificationCode
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = Date.now() + (5 * 60 * 1000);
         sessionStorage.setItem('primecare_verification', JSON.stringify({ code, expiry, target: u }));
@@ -291,7 +294,6 @@ function initForgot() {
         const p1 = document.getElementById('f-password').value;
         const p2 = document.getElementById('f-confirm').value;
 
-        // Inline verifyCode
         const stored = JSON.parse(sessionStorage.getItem('primecare_verification'));
         if (!stored || stored.target !== resetTarget || stored.code !== code || Date.now() > stored.expiry) {
             return utils.showAlert('alert-container', 'danger', 'Invalid or expired code.');
@@ -301,9 +303,6 @@ function initForgot() {
         if (p1 !== p2) return utils.showAlert('alert-container', 'danger', 'Passwords do not match.');
 
         try {
-            // Assuming resetUserPassword is the correct function
-            const res = await api.resetUserPassword(user.id); // Note: Need user ID here, might need adjustment based on actual api.js
-            // For now, simulating the reset since resetPassword wasn't in the provided api.js
             let users = api.getAll('users');
             const userIndex = users.findIndex(u => u.username === resetTarget && u.email === document.getElementById('f-email').value);
             if (userIndex !== -1) {

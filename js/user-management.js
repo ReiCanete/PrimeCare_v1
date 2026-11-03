@@ -55,6 +55,28 @@ window.switchTab = function(tab) {
 };
 
 // --- USERS TAB ---
+window.setUserChipFilter = async function(type, val = null) {
+    if (type === 'all') {
+        uState.role = 'All';
+        uState.status = 'All';
+    } else if (type === 'role') {
+        uState.role = val;
+        uState.status = 'All';
+    } else if (type === 'status') {
+        uState.role = 'All';
+        uState.status = val;
+    }
+    uState.page = 1;
+
+    // Sync dropdown controls
+    const roleSelect = document.getElementById('u-role');
+    const statusSelect = document.getElementById('u-status');
+    if (roleSelect) roleSelect.value = uState.role;
+    if (statusSelect) statusSelect.value = uState.status;
+
+    await renderUsersTable();
+};
+
 window.resetUserFilters = async function() {
     uState.keyword = ''; uState.role = 'All'; uState.status = 'All'; uState.page = 1;
     document.getElementById('u-search').value = '';
@@ -66,6 +88,17 @@ window.resetUserFilters = async function() {
 window.setUPage = async function(p) { uState.page = p; await renderUsersTable(); };
 
 async function renderUsersTable() {
+    // Update active chip state to reflect current filters
+    document.querySelectorAll('#user-chips .chip').forEach(c => c.classList.remove('active'));
+    let activeSelector = '#user-chips .chip[data-chip="all"]';
+    if (uState.role !== 'All' && uState.status === 'All') {
+        activeSelector = `#user-chips .chip[data-chip="role:${uState.role}"]`;
+    } else if (uState.status === 'inactive' && uState.role === 'All') {
+        activeSelector = '#user-chips .chip[data-chip="status:inactive"]';
+    }
+    const matchedChip = document.querySelector(activeSelector);
+    if (matchedChip) matchedChip.classList.add('active');
+
     const users = await api.getUsers(uState);
     const allUsers = await api.getUsers({ keyword: '', role: 'All', status: 'All' });
 

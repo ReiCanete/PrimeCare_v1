@@ -1,6 +1,6 @@
 // js/data.js — Seed Data & Versioned LocalStorage Initialization
 
-const DATA_VERSION = "1.3"; // Bumped to force re-seed of empty/missing public collections
+const DATA_VERSION = "1.4"; // Bumped to sync structured patient addresses and P-002 pending status
 
 function getLocalYYYYMMDD(date) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -24,9 +24,9 @@ const seedData = {
         { id: 'U-006', username: 'patient2', password: 'password123', fullName: 'Leonor Rivera', role: 'patient', status: 'pending', email: 'leonor@example.com', mobile: '09181234567', createdAt: todayStr, lastLogin: null, createdBy: null, mustChangePassword: false }
     ],
 
-   patients: [
-        { id: 'P-001', userId: 'U-005', firstName: 'Juan', middleName: 'Santos', lastName: 'Dela Cruz', suffix: '', fullName: 'Juan Dela Cruz', birthdate: '1985-05-15', sex: 'Male', civilStatus: 'Married', address: 'Quezon City', mobile: '09171234567', email: 'juan@example.com', emergencyContactName: 'Maria Dela Cruz', emergencyContactNumber: '09177654321', emergencyContactRelationship: 'Spouse', idType: 'Passport', idNumber: 'P1234567A', admitType: 'Outpatient', dateAdmitted: yesterdayStr, status: 'verified', verifiedBy: 'System Admin', verifiedAt: yesterdayStr, rejectionReason: null, createdAt: yesterdayStr, bloodType: 'O+', allergies: 'Penicillin, Aspirin', medicalConditions: 'Hypertension', insuranceProvider: 'PhilHealth', insuranceNumber: 'PH-12345', assignedDoctorId: 'D-001', ward: '', bedNumber: '', notes: 'Regular checkups.' },
-        { id: 'P-002', userId: 'U-006', firstName: 'Leonor', middleName: 'Bautista', lastName: 'Rivera', suffix: '', fullName: 'Leonor Rivera', birthdate: '1990-08-22', sex: 'Female', civilStatus: 'Single', address: 'Manila', mobile: '09181234567', email: 'leonor@example.com', emergencyContactName: 'Antonio Rivera', emergencyContactNumber: '09187654321', emergencyContactRelationship: 'Father', idType: 'UMID', idNumber: 'CRN-123-456', admitType: 'Outpatient', dateAdmitted: todayStr, status: 'verified', verifiedBy: 'System Admin', verifiedAt: todayStr, rejectionReason: null, createdAt: todayStr, bloodType: 'A-', allergies: 'None', medicalConditions: 'Asthma', insuranceProvider: 'Maxicare', insuranceNumber: 'MAX-999', assignedDoctorId: 'D-002', ward: '', bedNumber: '', notes: 'Verified patient.' }
+    patients: [
+        { id: 'P-001', userId: 'U-005', firstName: 'Juan', middleName: 'Santos', lastName: 'Dela Cruz', suffix: '', fullName: 'Juan Dela Cruz', birthdate: '1985-05-15', sex: 'Male', civilStatus: 'Married', street: '123 Katipunan Ave.', brgy: 'Loyola Heights', city: 'Quezon City', province: 'Metro Manila', address: '123 Katipunan Ave., Loyola Heights, Quezon City, Metro Manila', mobile: '09171234567', email: 'juan@example.com', emergencyContactName: 'Maria Dela Cruz', emergencyContactNumber: '09177654321', emergencyContactRelationship: 'Spouse', idType: 'Passport', idNumber: 'P1234567A', admitType: 'Outpatient', dateAdmitted: yesterdayStr, status: 'verified', verifiedBy: 'System Admin', verifiedAt: yesterdayStr, rejectionReason: null, createdAt: yesterdayStr, bloodType: 'O+', allergies: 'Penicillin, Aspirin', medicalConditions: 'Hypertension', insuranceProvider: 'PhilHealth', insuranceNumber: 'PH-12345', assignedDoctorId: 'D-001', ward: '', bedNumber: '', notes: 'Regular checkups.' },
+        { id: 'P-002', userId: 'U-006', firstName: 'Leonor', middleName: 'Bautista', lastName: 'Rivera', suffix: '', fullName: 'Leonor Rivera', birthdate: '1990-08-22', sex: 'Female', civilStatus: 'Single', street: '456 Taft Ave.', brgy: 'Ermita', city: 'Manila', province: 'Metro Manila', address: '456 Taft Ave., Ermita, Manila, Metro Manila', mobile: '09181234567', email: 'leonor@example.com', emergencyContactName: 'Antonio Rivera', emergencyContactNumber: '09187654321', emergencyContactRelationship: 'Father', idType: 'UMID', idNumber: 'CRN-123-456', admitType: 'Outpatient', dateAdmitted: todayStr, status: 'pending', verifiedBy: null, verifiedAt: null, rejectionReason: null, createdAt: todayStr, bloodType: 'A-', allergies: 'None', medicalConditions: 'Asthma', insuranceProvider: 'Maxicare', insuranceNumber: 'MAX-999', assignedDoctorId: 'D-002', ward: '', bedNumber: '', notes: 'Awaiting staff verification.' }
     ],
     doctors: [
         { id: 'D-001', userId: 'U-002', name: 'Dr. Jose Rizal', photoInitials: 'JR', specialization: 'Ophthalmology', department: 'Surgery', contact: '09170000001', email: 'jrizal@primecare.ph', languages: ['English', 'Tagalog', 'Spanish'], acceptedInsurance: ['PhilHealth', 'Maxicare'], qualifications: 'MD, PhD', status: 'active', consultationFee: 1000, slotMinutes: 30, schedule: [{day: 'Mon', start: '09:00', end: '17:00'}, {day: 'Tue', start: '09:00', end: '17:00'}, {day: 'Wed', start: '09:00', end: '17:00'}, {day: 'Thu', start: '09:00', end: '17:00'}, {day: 'Fri', start: '09:00', end: '17:00'}, {day: 'Sat', start: '09:00', end: '17:00'}, {day: 'Sun', start: '09:00', end: '17:00'}] },
@@ -139,7 +139,7 @@ seedData.wards.forEach(w => {
 
 function initializeMockData() {
     const currentVersion = localStorage.getItem('primecare_dataVersion');
-    const staticKeys = ['departments', 'emergencyInfo', 'triageGuide', 'visitorInfo', 'idTypes', 'medicinePrices', 'labPrices'];
+    const staticKeys = ['departments', 'emergencyInfo', 'triageGuide', 'visitorInfo', 'idTypes', 'medicinePrices', 'labPrices', 'patients'];
 
     for (const key in seedData) {
         const storageKey = `primecare_${key}`;

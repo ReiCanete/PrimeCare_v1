@@ -55,13 +55,13 @@
                 </div>
 
                 <div class="chip-group" id="user-chips">
-                    <div class="chip active">Total (<span id="c-tot">0</span>)</div>
-                    <div class="chip">Admin (<span id="c-adm">0</span>)</div>
-                    <div class="chip">Doctor (<span id="c-doc">0</span>)</div>
-                    <div class="chip">Nurse (<span id="c-nur">0</span>)</div>
-                    <div class="chip">Staff (<span id="c-sta">0</span>)</div>
-                    <div class="chip">Patients (<span id="c-pat">0</span>)</div>
-                    <div class="chip">Inactive (<span id="c-ina">0</span>)</div>
+                    <div class="chip active" data-chip="all" onclick="setUserChipFilter('all')">Total (<span id="c-tot">0</span>)</div>
+                    <div class="chip" data-chip="role:admin" onclick="setUserChipFilter('role', 'admin')">Admin (<span id="c-adm">0</span>)</div>
+                    <div class="chip" data-chip="role:doctor" onclick="setUserChipFilter('role', 'doctor')">Doctor (<span id="c-doc">0</span>)</div>
+                    <div class="chip" data-chip="role:nurse" onclick="setUserChipFilter('role', 'nurse')">Nurse (<span id="c-nur">0</span>)</div>
+                    <div class="chip" data-chip="role:staff" onclick="setUserChipFilter('role', 'staff')">Staff (<span id="c-sta">0</span>)</div>
+                    <div class="chip" data-chip="role:patient" onclick="setUserChipFilter('role', 'patient')">Patients (<span id="c-pat">0</span>)</div>
+                    <div class="chip" data-chip="status:inactive" onclick="setUserChipFilter('status', 'inactive')">Inactive (<span id="c-ina">0</span>)</div>
                 </div>
 
                 <div class="table-responsive">
