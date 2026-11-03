@@ -35,6 +35,7 @@ const api = {
             doctors: true,  // Phase 5.5: doctor management, departments & scheduling handled by PHP (api/doctors/*.php)
             appointments: true, // Phase 5.6: appointment management, online booking & pre-visit forms handled by PHP (api/appointments/*.php)
             clinical: false,
+            medicalRecords: true, // Phase 5.7: EHR / medical records & vitals handled by PHP (api/medical-records/*.php)
             wards: false,
             billing: false,
             reports: false,
@@ -178,10 +179,20 @@ const api = {
         }
     },
 
+    /**
+     * Returns the `X-CSRF-Token` header object required by every state-changing PHP endpoint
+     * (empty object if no token could be obtained, so the server rejects the request with 403).
+     */
+    _csrfHeaders: async function() {
+        const token = await this._ensureCsrfToken();
+        return token ? { 'X-CSRF-Token': token } : {};
+    },
+
     _patientsFetchPromise: null,
     _lastNextPreviewId: null,
     _doctorsFetchPromise: null,
     _appointmentsFetchPromise: null,
+    _medicalRecordsFetchPromise: null,
 
     /**
      * Helper used by unmigrated async methods (dashboard stats, appointments, clinical, billing)
@@ -317,6 +328,57 @@ const api = {
             if (Array.isArray(list)) return list;
         } catch (e) {}
         return this.getAll('appointments');
+    },
+
+    /**
+     * Mirrors MySQL medical records into localStorage (`primecare_medicalRecords`) so still-unmigrated
+     * synchronous consumers (e.g. delete-guards) keep resolving current data.
+     * `options.replaceAll` replaces the cache with the supplied authoritative list.
+     */
+    _syncMedicalRecordCache: function(recordOrList, options = {}) {
+        try {
+            let current = this.getAll('medicalRecords');
+            if (options.replaceAll && Array.isArray(recordOrList)) {
+                localStorage.setItem('primecare_medicalRecords', JSON.stringify(recordOrList));
+                return;
+            }
+            if (options.deletedId) {
+                current = current.filter(r => r.id !== options.deletedId);
+            }
+            const items = Array.isArray(recordOrList) ? recordOrList : (recordOrList ? [recordOrList] : []);
+            items.forEach(item => {
+                if (!item || !item.id) return;
+                const idx = current.findIndex(r => r.id === item.id);
+                if (idx !== -1) {
+                    current[idx] = { ...current[idx], ...item };
+                } else {
+                    current.push(item);
+                }
+            });
+            localStorage.setItem('primecare_medicalRecords', JSON.stringify(current));
+        } catch (e) {
+            // Ignore localStorage quota/serialization errors
+        }
+    },
+
+    /**
+     * Helper used by unmigrated async consumers (reports) to ensure medical records are fetched
+     * from MySQL before aggregating.
+     */
+    _getMedicalRecordsListForMockJoin: async function() {
+        if (!this._backendConfig.modules.medicalRecords) {
+            return this.getAll('medicalRecords');
+        }
+        if (!this._medicalRecordsFetchPromise) {
+            this._medicalRecordsFetchPromise = this.getMedicalRecords({}).finally(() => {
+                setTimeout(() => { this._medicalRecordsFetchPromise = null; }, 1500);
+            });
+        }
+        try {
+            const list = await this._medicalRecordsFetchPromise;
+            if (Array.isArray(list)) return list;
+        } catch (e) {}
+        return this.getAll('medicalRecords');
     },
 
     // ==========================================
@@ -1127,10 +1189,13 @@ const api = {
         const appts = this._backendConfig.modules.appointments
             ? await this.searchAppointments({ patientId: id, sortBy: 'datetime', sortDir: 'desc' })
             : this.getAll('appointments').filter(a => a.patientId === id);
+        const medicalRecords = this._backendConfig.modules.medicalRecords
+            ? await this.getMedicalRecords({ patientId: id })
+            : this.getAll('medicalRecords').filter(r => r.patientId === id);
         return {
             ...patient,
             appointments: appts,
-            medicalRecords: this.getAll('medicalRecords').filter(r => r.patientId === id),
+            medicalRecords: medicalRecords,
             bills: this.getAll('bills').filter(b => b.patientId === id)
         };
     },
@@ -1498,6 +1563,7 @@ const api = {
         if (this._backendConfig.modules.appointments) {
             const res = await this._request('appointments/create.php', {
                 method: 'POST',
+                headers: await this._csrfHeaders(),
                 body: data
             });
             if (res.success && res.data && res.data.appointment) {
@@ -1558,6 +1624,7 @@ const api = {
 
             const res = await this._request('appointments/reschedule.php', {
                 method: 'POST',
+                headers: await this._csrfHeaders(),
                 body: payload
             });
             if (res.success && res.data && res.data.appointment) {
@@ -1595,6 +1662,7 @@ const api = {
         if (this._backendConfig.modules.appointments) {
             const res = await this._request('appointments/status.php', {
                 method: 'POST',
+                headers: await this._csrfHeaders(),
                 body: { id, status: 'Cancelled', cancelReason: reason }
             });
             if (res.success && res.data && res.data.appointment) {
@@ -1633,6 +1701,7 @@ const api = {
 
             const res = await this._request('appointments/status.php', {
                 method: 'POST',
+                headers: await this._csrfHeaders(),
                 body
             });
             if (res.success && res.data && res.data.appointment) {
@@ -1671,15 +1740,32 @@ const api = {
     // ==========================================
     // 6. CLINICAL (STAFF SIDE)
     // ==========================================
-    getMedicalRecords: async function(filters) {
+    getMedicalRecords: async function(filters = {}) {
+        const safeFilters = filters || {};
+        if (this._backendConfig.modules.medicalRecords) {
+            const params = {};
+            if (safeFilters.patientId) params.patientId = safeFilters.patientId;
+            if (safeFilters.doctorId) params.doctorId = safeFilters.doctorId;
+            if (safeFilters.dateFrom) params.dateFrom = safeFilters.dateFrom;
+            if (safeFilters.dateTo) params.dateTo = safeFilters.dateTo;
+            if (safeFilters.keyword) params.keyword = safeFilters.keyword;
+            const res = await this._request('medical-records/list.php', { method: 'GET', params });
+            if (res.success && res.data && Array.isArray(res.data.records)) {
+                const isUnfiltered = Object.keys(params).length === 0;
+                this._syncMedicalRecordCache(res.data.records, isUnfiltered ? { replaceAll: true } : {});
+                return res.data.records;
+            }
+            return [];
+        }
+
         let records = this.getAll('medicalRecords');
         const patients = await this._getPatientsListForMockJoin();
         const doctors = await this._getDoctorsListForMockJoin();
 
-        if (filters.patientId) records = records.filter(r => r.patientId === filters.patientId);
-        if (filters.doctorId) records = records.filter(r => r.attendingDoctorId === filters.doctorId);
-        if (filters.dateFrom) records = records.filter(r => r.createdAt.split('T')[0] >= filters.dateFrom);
-        if (filters.dateTo) records = records.filter(r => r.createdAt.split('T')[0] <= filters.dateTo);
+        if (safeFilters.patientId) records = records.filter(r => r.patientId === safeFilters.patientId);
+        if (safeFilters.doctorId) records = records.filter(r => r.attendingDoctorId === safeFilters.doctorId);
+        if (safeFilters.dateFrom) records = records.filter(r => r.createdAt.split('T')[0] >= safeFilters.dateFrom);
+        if (safeFilters.dateTo) records = records.filter(r => r.createdAt.split('T')[0] <= safeFilters.dateTo);
 
         records = records.map(r => {
             const p = patients.find(x => x.id === r.patientId);
@@ -1687,15 +1773,65 @@ const api = {
             return { ...r, patientName: p ? p.fullName : 'Unknown', doctorName: d ? d.name : 'Unknown' };
         });
 
-        if (filters.keyword) {
-            const kw = filters.keyword.toLowerCase();
+        if (safeFilters.keyword) {
+            const kw = safeFilters.keyword.toLowerCase();
             records = records.filter(r => r.id.toLowerCase().includes(kw) || r.patientName.toLowerCase().includes(kw) || (r.diagnosis && r.diagnosis.toLowerCase().includes(kw)));
         }
         return records.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     },
-    getMedicalRecordById: async function(id) { return this.getById('medicalRecords', id); },
+    getMedicalRecordById: async function(id) {
+        if (!id) return null;
+        if (this._backendConfig.modules.medicalRecords) {
+            const res = await this._request('medical-records/get.php', { method: 'GET', params: { id } });
+            if (res.success && res.data && res.data.record) {
+                this._syncMedicalRecordCache(res.data.record);
+                return res.data.record;
+            }
+            return null;
+        }
+        return this.getById('medicalRecords', id);
+    },
     getPatientMedicalHistory: async function(patientId) { return await this.getMedicalRecords({ patientId }); },
     saveMedicalRecord: async function(record) {
+        if (this._backendConfig.modules.medicalRecords) {
+            if (!record.diagnosis || !record.treatmentNotes) {
+                return { success: false, message: 'Diagnosis and treatment notes are required.' };
+            }
+            const payload = {
+                patientId: record.patientId,
+                chiefComplaint: record.chiefComplaint || '',
+                diagnosis: record.diagnosis,
+                treatmentNotes: record.treatmentNotes,
+                followUpDate: record.followUpDate || null,
+                attendingDoctorId: record.attendingDoctorId || null
+            };
+            if (record.appointmentId) payload.appointmentId = record.appointmentId;
+
+            let endpoint = 'medical-records/create.php';
+            if (record.id) {
+                endpoint = 'medical-records/update.php';
+                payload.id = record.id;
+                // Optimistic concurrency: send the version the user last loaded (from the synced cache).
+                const cached = this.getById('medicalRecords', record.id);
+                if (cached && cached.updatedAt) payload.expectedUpdatedAt = cached.updatedAt;
+            }
+
+            const res = await this._request(endpoint, {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: payload
+            });
+            if (res.success && res.data && res.data.record) {
+                this._syncMedicalRecordCache(res.data.record);
+                return {
+                    success: true,
+                    message: res.message || (record.id ? 'Medical record updated successfully.' : 'Medical record created successfully.'),
+                    record: res.data.record
+                };
+            }
+            return { success: false, message: res.message || 'Failed to save medical record.' };
+        }
+
         const user = await this.getCurrentUser();
         if (!user || (user.role !== 'doctor' && user.role !== 'admin')) {
             return { success: false, message: 'Unauthorized. Only doctors or admins can update diagnoses and treatments.' };
@@ -1723,6 +1859,19 @@ const api = {
         }
     },
     saveVitals: async function(patientId, vitals) {
+        if (this._backendConfig.modules.medicalRecords) {
+            const res = await this._request('medical-records/vitals.php', {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: { patientId, vitals }
+            });
+            if (res.success && res.data && res.data.record) {
+                this._syncMedicalRecordCache(res.data.record);
+                return { success: true, message: res.message || 'Vitals recorded successfully.', record: res.data.record };
+            }
+            return { success: false, message: res.message || 'Failed to record vitals.' };
+        }
+
         const user = await this.getCurrentUser();
         if (!user || (user.role !== 'nurse' && user.role !== 'doctor' && user.role !== 'admin')) {
             return { success: false, message: 'Unauthorized to record vitals.' };
@@ -2308,7 +2457,7 @@ const api = {
             const docs = await this._getDoctorsListForMockJoin();
             const allAppts = await this._getAppointmentsListForMockJoin();
             const appts = allAppts.filter(a => a.date >= dateFrom && a.date <= dateTo && a.status === 'Completed');
-            const records = this.getAll('medicalRecords').filter(r => r.createdAt.split('T')[0] >= dateFrom && r.createdAt.split('T')[0] <= dateTo);
+            const records = (await this._getMedicalRecordsListForMockJoin()).filter(r => (r.createdAt || '').split('T')[0] >= dateFrom && (r.createdAt || '').split('T')[0] <= dateTo);
             const rxs = this.getAll('prescriptions').filter(r => r.date >= dateFrom && r.date <= dateTo);
             
             docs.forEach(d => {
@@ -2474,6 +2623,7 @@ const api = {
         if (this._backendConfig.modules.appointments) {
             const res = await this._request('appointments/create.php', {
                 method: 'POST',
+                headers: await this._csrfHeaders(),
                 body: { ...data, patientId: ctx.patient.id }
             });
             if (res.success && res.data && res.data.appointment) {
@@ -2546,6 +2696,24 @@ const api = {
     getMyMedicalRecords: async function() {
         const ctx = await this._getPatientContext();
         if (ctx.error) return [];
+
+        if (this._backendConfig.modules.medicalRecords) {
+            // Server scopes this to the authenticated patient (staff preview mode -> demo patient P-001).
+            const res = await this._request('medical-records/list.php', { method: 'GET', params: { my: 1 } });
+            if (res.success && res.data && Array.isArray(res.data.records)) {
+                return res.data.records.map(r => ({
+                    id: r.id,
+                    date: r.date || (r.createdAt || '').split('T')[0],
+                    chiefComplaint: r.chiefComplaint,
+                    diagnosis: r.diagnosis,
+                    treatmentNotes: r.treatmentNotes,
+                    followUpDate: r.followUpDate,
+                    doctorName: r.doctorName || 'Unknown'
+                })).sort((a, b) => b.date.localeCompare(a.date));
+            }
+            return [];
+        }
+
         const doctors = await this._getDoctorsListForMockJoin();
         return this.getAll('medicalRecords').filter(r => r.patientId === ctx.patient.id).map(r => {
             const d = doctors.find(x => x.id === r.attendingDoctorId);
@@ -2700,6 +2868,7 @@ const api = {
         if (this._backendConfig.modules.appointments) {
             const res = await this._request('appointments/pre-visit.php', {
                 method: 'POST',
+                headers: await this._csrfHeaders(),
                 body: { appointmentId, ...form }
             });
             if (res.success && res.data) {

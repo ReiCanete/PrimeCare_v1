@@ -33,6 +33,17 @@ async function initLogin() {
         toggle.innerText = type === 'password' ? '👁️' : '🙈';
     });
 
+    // Demo credentials quick-fill helper
+    document.querySelectorAll('.demo-box li[data-username]').forEach(item => {
+        item.addEventListener('click', () => {
+            const u = item.getAttribute('data-username');
+            const p = item.getAttribute('data-password');
+            const userInput = document.getElementById('username');
+            if (userInput && u) userInput.value = u;
+            if (passInput && p) passInput.value = p;
+        });
+    });
+
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         if (submitting) return; // prevent duplicate submissions
