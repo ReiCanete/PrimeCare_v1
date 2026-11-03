@@ -63,7 +63,7 @@
         async function openDept(name) {
             const dept = ((await safeCall('getDepartments')) || []).find(d => d.name === name);
             if (!dept) return;
-            const docs = ((await safeCall('getAll', 'doctors')) || []).filter(d => d.department === name);
+            const docs = ((await safeCall('searchDoctors', { department: name })) || []).filter(d => d.department === name);
             
             document.getElementById('modal-title').innerText = dept.name;
             document.getElementById('modal-desc').innerText = dept.description;

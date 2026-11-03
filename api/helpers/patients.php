@@ -132,7 +132,7 @@ function findPatientByUserId(PDO $pdo, string $userId): ?array
  */
 function allocateNextId(PDO $pdo, string $entityKey, string $tableName, string $defaultPrefix, int $defaultPad = 3): string
 {
-    if (!in_array($tableName, ['patients', 'users'], true)) {
+    if (!in_array($tableName, ['patients', 'users', 'doctors', 'appointments', 'medical_records', 'prescriptions', 'lab_results', 'immunizations', 'admissions', 'bills'], true)) {
         throw new InvalidArgumentException('Invalid table name for sequence allocation.');
     }
 

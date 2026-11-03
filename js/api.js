@@ -32,7 +32,7 @@ const api = {
             users: false,
             publicData: false,
             patients: true, // Phase 5.3: patient management & self-registration handled by PHP (api/patients/*.php)
-            doctors: false,
+            doctors: true,  // Phase 5.5: doctor management, departments & scheduling handled by PHP (api/doctors/*.php)
             appointments: false,
             clinical: false,
             wards: false,
@@ -180,6 +180,7 @@ const api = {
 
     _patientsFetchPromise: null,
     _lastNextPreviewId: null,
+    _doctorsFetchPromise: null,
 
     /**
      * Helper used by unmigrated async methods (dashboard stats, appointments, clinical, billing)
@@ -199,6 +200,56 @@ const api = {
             if (Array.isArray(list) && list.length > 0) return list;
         } catch (e) {}
         return this.getAll('patients');
+    },
+
+    /**
+     * Mirrors MySQL doctor records into localStorage (`primecare_doctors`) so
+     * still-unmigrated synchronous helpers continue resolving current doctor profiles.
+     */
+    _syncDoctorCache: function(doctorOrList, options = {}) {
+        try {
+            let current = this.getAll('doctors');
+            if (options.replaceAll && Array.isArray(doctorOrList)) {
+                localStorage.setItem('primecare_doctors', JSON.stringify(doctorOrList));
+                return;
+            }
+            if (options.deletedId) {
+                current = current.filter(d => d.id !== options.deletedId);
+            }
+            const items = Array.isArray(doctorOrList) ? doctorOrList : (doctorOrList ? [doctorOrList] : []);
+            items.forEach(item => {
+                if (!item || !item.id) return;
+                const idx = current.findIndex(d => d.id === item.id);
+                if (idx !== -1) {
+                    current[idx] = { ...current[idx], ...item };
+                } else {
+                    current.push(item);
+                }
+            });
+            localStorage.setItem('primecare_doctors', JSON.stringify(current));
+        } catch (e) {
+            // Ignore localStorage quota/serialization errors
+        }
+    },
+
+    /**
+     * Helper used by unmigrated async methods (dashboard stats, appointments, clinical, wards, reports)
+     * to ensure doctor profiles are fetched from MySQL before joining doctor names/specializations.
+     */
+    _getDoctorsListForMockJoin: async function() {
+        if (!this._backendConfig.modules.doctors) {
+            return this.getAll('doctors');
+        }
+        if (!this._doctorsFetchPromise) {
+            this._doctorsFetchPromise = this.getDoctors({}).finally(() => {
+                setTimeout(() => { this._doctorsFetchPromise = null; }, 1500);
+            });
+        }
+        try {
+            const list = await this._doctorsFetchPromise;
+            if (Array.isArray(list) && list.length > 0) return list;
+        } catch (e) {}
+        return this.getAll('doctors');
     },
 
     // ==========================================
@@ -592,7 +643,7 @@ const api = {
     // 3. DASHBOARD & PUBLIC DATA
     // ==========================================
    getStats: async function() {
-        const patients = await this._getPatientsListForMockJoin(); const doctors = this.getAll('doctors');
+        const patients = await this._getPatientsListForMockJoin(); const doctors = await this._getDoctorsListForMockJoin();
         const appointments = this.getAll('appointments'); const bills = this.getAll('bills');
         const beds = this.getAll('beds'); const labs = this.getAll('labResults');
         const admissions = this.getAll('admissions');
@@ -612,7 +663,7 @@ const api = {
     getTodaysAppointments: async function() {
         const todayStr = new Date().toLocaleDateString('en-CA');
         const appts = this.getAll('appointments').filter(a => a.date === todayStr);
-        const patients = await this._getPatientsListForMockJoin(); const doctors = this.getAll('doctors');
+        const patients = await this._getPatientsListForMockJoin(); const doctors = await this._getDoctorsListForMockJoin();
         return appts.map(a => {
             const p = patients.find(x => x.id === a.patientId);
             const d = doctors.find(x => x.id === a.doctorId);
@@ -640,7 +691,18 @@ const api = {
         this.getAll('bills').filter(b => b.date === todayStr && b.status === 'Paid').forEach(b => activities.push({ icon: '💳', text: `Payment received: ${b.id}`, time: 'Today' }));
         return activities.slice(0, limit);
     },
-    getDepartments: async function() { return this.getAll('departments'); },
+    getDepartments: async function() {
+        if (this._backendConfig.modules.doctors) {
+            const res = await this._request('doctors/departments.php', { method: 'GET' });
+            if (res.success && res.data && Array.isArray(res.data.departments)) {
+                try {
+                    localStorage.setItem('primecare_departments', JSON.stringify(res.data.departments));
+                } catch (e) {}
+                return res.data.departments;
+            }
+        }
+        return this.getAll('departments');
+    },
     getIdTypes: async function() {
         if (this._backendConfig.modules.patients) {
             const res = await this._request('patients/check-unique.php', {
@@ -655,26 +717,55 @@ const api = {
         return this.getAll('idTypes');
     },
     searchDoctors: async function(filters = {}) {
+        const safeFilters = filters || {};
+        if (this._backendConfig.modules.doctors) {
+            const res = await this._request('doctors/list.php', {
+                method: 'GET',
+                params: {
+                    keyword: safeFilters.keyword || '',
+                    specialization: safeFilters.specialization || safeFilters.spec || 'All',
+                    department: safeFilters.department || 'All',
+                    departmentId: safeFilters.departmentId || '',
+                    language: safeFilters.language || '',
+                    insurance: safeFilters.insurance || '',
+                    status: safeFilters.status || 'All',
+                    sortBy: safeFilters.sortBy || 'id',
+                    sortDir: safeFilters.sortDir || 'asc'
+                }
+            });
+            if (res.success && res.data && Array.isArray(res.data.doctors)) {
+                const isUnfiltered = !safeFilters.keyword
+                    && (!safeFilters.specialization || safeFilters.specialization === 'All')
+                    && (!safeFilters.spec || safeFilters.spec === 'All')
+                    && (!safeFilters.department || safeFilters.department === 'All')
+                    && !safeFilters.departmentId
+                    && !safeFilters.language
+                    && !safeFilters.insurance
+                    && (!safeFilters.status || safeFilters.status === 'All');
+                this._syncDoctorCache(res.data.doctors, { replaceAll: isUnfiltered });
+                return res.data.doctors;
+            }
+        }
         let docs = this.getAll('doctors');
-        if (filters.keyword) {
-            const kw = filters.keyword.trim().toLowerCase();
+        if (safeFilters.keyword) {
+            const kw = safeFilters.keyword.trim().toLowerCase();
             docs = docs.filter(d => 
                 (d.name && d.name.toLowerCase().includes(kw)) ||
                 (d.specialization && d.specialization.toLowerCase().includes(kw)) ||
                 (d.department && d.department.toLowerCase().includes(kw))
             );
         }
-        if (filters.specialization && filters.specialization !== 'All' && filters.specialization !== '') {
-            docs = docs.filter(d => d.specialization.toLowerCase() === filters.specialization.toLowerCase());
+        if (safeFilters.specialization && safeFilters.specialization !== 'All' && safeFilters.specialization !== '') {
+            docs = docs.filter(d => d.specialization.toLowerCase() === safeFilters.specialization.toLowerCase());
         }
-        if (filters.language && filters.language !== 'All' && filters.language !== '') {
-            docs = docs.filter(d => Array.isArray(d.languages) && d.languages.some(l => l.toLowerCase() === filters.language.toLowerCase()));
+        if (safeFilters.language && safeFilters.language !== 'All' && safeFilters.language !== '') {
+            docs = docs.filter(d => Array.isArray(d.languages) && d.languages.some(l => l.toLowerCase() === safeFilters.language.toLowerCase()));
         }
-        if (filters.insurance && filters.insurance !== 'All' && filters.insurance !== '') {
-            docs = docs.filter(d => Array.isArray(d.acceptedInsurance) && d.acceptedInsurance.some(i => i.toLowerCase() === filters.insurance.toLowerCase()));
+        if (safeFilters.insurance && safeFilters.insurance !== 'All' && safeFilters.insurance !== '') {
+            docs = docs.filter(d => Array.isArray(d.acceptedInsurance) && d.acceptedInsurance.some(i => i.toLowerCase() === safeFilters.insurance.toLowerCase()));
         }
-        if (filters.status && filters.status !== 'All' && filters.status !== '') {
-            docs = docs.filter(d => d.status.toLowerCase() === filters.status.toLowerCase());
+        if (safeFilters.status && safeFilters.status !== 'All' && safeFilters.status !== '') {
+            docs = docs.filter(d => d.status.toLowerCase() === safeFilters.status.toLowerCase());
         }
         return docs;
     },
@@ -1012,28 +1103,200 @@ const api = {
     // ==========================================
     // 5. DOCTORS & APPOINTMENTS (STAFF SIDE)
     // ==========================================
-    getDoctorById: async function(id) { return this.getById('doctors', id); },
-    getDoctors: async function() { return this.getAll('doctors'); },
+    getDoctorById: async function(id) {
+        if (!id) return null;
+        if (this._backendConfig.modules.doctors) {
+            const res = await this._request('doctors/get.php', {
+                method: 'GET',
+                params: { id }
+            });
+            if (res.success && res.data && res.data.doctor) {
+                this._syncDoctorCache(res.data.doctor);
+                return res.data.doctor;
+            }
+            if (res.status === 404) return null;
+        }
+        return this.getById('doctors', id);
+    },
+    getDoctors: async function(filters = {}) {
+        if (this._backendConfig.modules.doctors) {
+            return await this.searchDoctors(filters || {});
+        }
+        return this.getAll('doctors');
+    },
     getDoctorsBySpecialization: async function() {
-        const docs = this.getAll('doctors').filter(d => d.status === 'active');
+        const allDocs = await this.getDoctors({ status: 'active' });
+        const docs = allDocs.filter(d => d.status === 'active');
         const grouped = {};
-        docs.forEach(d => { if (!grouped[d.specialization]) grouped[d.specialization] = []; grouped[d.specialization].push(d); });
+        docs.forEach(d => {
+            if (!grouped[d.specialization]) grouped[d.specialization] = [];
+            grouped[d.specialization].push(d);
+        });
         return grouped;
     },
     saveDoctor: async function(doctor) {
+        if (this._backendConfig.modules.doctors) {
+            const isUpdate = Boolean(doctor && doctor.id && String(doctor.id).trim() !== '');
+            const endpoint = isUpdate ? 'doctors/update.php' : 'doctors/create.php';
+            const csrfToken = await this._ensureCsrfToken();
+            const res = await this._request(endpoint, {
+                method: 'POST',
+                headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+                body: doctor
+            });
+            if (res.success && res.data && res.data.doctor) {
+                this._syncDoctorCache(res.data.doctor);
+                this.logActivity(
+                    isUpdate ? 'Update Doctor' : 'Create Doctor',
+                    `${isUpdate ? 'Updated' : 'Created'} doctor ${res.data.doctor.id} (${res.data.doctor.name})`
+                );
+                return {
+                    success: true,
+                    message: res.message || 'Doctor saved successfully.',
+                    doctor: res.data.doctor,
+                    upcomingAppointments: res.data.upcomingAppointments || 0
+                };
+            }
+            return { success: false, message: res.message || 'Failed to save doctor.' };
+        }
         const parts = doctor.name.replace('Dr. ', '').split(' ');
         doctor.photoInitials = parts.length > 1 ? (parts[0][0] + parts[parts.length-1][0]).toUpperCase() : parts[0].substring(0,2).toUpperCase();
         const saved = this.save('doctors', doctor, 'D');
         return { success: true, message: 'Doctor saved successfully.', doctor: saved };
     },
+    setDoctorStatus: async function(id, status) {
+        if (this._backendConfig.modules.doctors) {
+            const csrfToken = await this._ensureCsrfToken();
+            const res = await this._request('doctors/update.php', {
+                method: 'POST',
+                headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+                body: { id, status }
+            });
+            if (res.success && res.data && res.data.doctor) {
+                this._syncDoctorCache(res.data.doctor);
+                return {
+                    success: true,
+                    message: res.message,
+                    doctor: res.data.doctor,
+                    upcomingAppointments: res.data.upcomingAppointments || 0
+                };
+            }
+            return { success: false, message: res.message || 'Failed to update doctor status.' };
+        }
+        const doc = this.getById('doctors', id);
+        if (!doc) return { success: false, message: 'Doctor not found.' };
+        doc.status = status;
+        const saved = this.save('doctors', doc, 'D');
+        return { success: true, message: `Doctor status set to ${status}.`, doctor: saved };
+    },
     deleteDoctor: async function(id) {
+        if (this._backendConfig.modules.doctors) {
+            // Also guard against unmigrated localStorage appointments/medicalRecords created during the session
+            const localAppts = this.getAll('appointments').filter(a => a.doctorId === id && (a.status === 'Pending' || a.status === 'Confirmed'));
+            const localRecords = this.getAll('medicalRecords').filter(r => r.attendingDoctorId === id || r.doctorId === id);
+            if (localAppts.length > 0 || localRecords.length > 0) {
+                return {
+                    success: false,
+                    message: 'Cannot delete doctor. They have upcoming appointments or medical records. Please set status to Inactive instead.'
+                };
+            }
+            const csrfToken = await this._ensureCsrfToken();
+            const res = await this._request('doctors/delete.php', {
+                method: 'POST',
+                headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+                body: { id }
+            });
+            if (res.success) {
+                this._syncDoctorCache(null, { deletedId: id });
+                this.logActivity('Delete Doctor', `Deleted doctor ${id}`);
+                return { success: true, message: res.message || 'Doctor deleted successfully.' };
+            }
+            return { success: false, message: res.message || 'Cannot delete doctor.' };
+        }
         const appts = this.getAll('appointments').filter(a => a.doctorId === id && (a.status === 'Pending' || a.status === 'Confirmed'));
         const records = this.getAll('medicalRecords').filter(r => r.doctorId === id);
         if (appts.length > 0 || records.length > 0) return { success: false, message: 'Cannot delete doctor. They have upcoming appointments or medical records. Please set status to Inactive instead.' };
         this.remove('doctors', id);
         return { success: true, message: 'Doctor deleted successfully.' };
     },
-    getDoctorSchedule: async function(doctorId) { const doc = await this.getDoctorById(doctorId); return doc ? doc.schedule : []; },
+    getDoctorSchedules: async function(filters = {}) {
+        const safeFilters = filters || {};
+        if (this._backendConfig.modules.doctors) {
+            const res = await this._request('doctors/schedules.php', {
+                method: 'GET',
+                params: {
+                    doctorId: safeFilters.doctorId || '',
+                    day: safeFilters.day || safeFilters.dayOfWeek || ''
+                }
+            });
+            if (res.success && res.data && Array.isArray(res.data.schedules)) {
+                return res.data.schedules;
+            }
+        }
+        const docs = await this.getDoctors({});
+        let list = [];
+        docs.forEach(d => {
+            if (safeFilters.doctorId && d.id !== safeFilters.doctorId) return;
+            (d.schedule || []).forEach(s => {
+                if (safeFilters.day && s.day !== safeFilters.day) return;
+                list.push({ ...s, doctorId: d.id, doctorName: d.name });
+            });
+        });
+        return list;
+    },
+    getDoctorSchedule: async function(doctorId) {
+        if (!doctorId) return [];
+        if (this._backendConfig.modules.doctors) {
+            const res = await this._request('doctors/schedules.php', {
+                method: 'GET',
+                params: { doctorId }
+            });
+            if (res.success && res.data && Array.isArray(res.data.schedules)) {
+                return res.data.schedules;
+            }
+        }
+        const doc = await this.getDoctorById(doctorId);
+        return doc ? doc.schedule : [];
+    },
+    createDoctorSchedule: async function(data) {
+        const csrfToken = await this._ensureCsrfToken();
+        const res = await this._request('doctors/schedules.php', {
+            method: 'POST',
+            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+            body: { action: 'create', ...data }
+        });
+        if (res.success && res.data) {
+            if (data && data.doctorId) await this.getDoctorById(data.doctorId);
+            return { success: true, message: res.message, schedule: res.data.schedule, schedules: res.data.schedules };
+        }
+        return { success: false, message: res.message || 'Failed to create schedule.' };
+    },
+    updateDoctorSchedule: async function(id, data) {
+        const csrfToken = await this._ensureCsrfToken();
+        const res = await this._request('doctors/schedules.php', {
+            method: 'POST',
+            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+            body: { action: 'update', id, ...data }
+        });
+        if (res.success && res.data) {
+            if (data && data.doctorId) await this.getDoctorById(data.doctorId);
+            return { success: true, message: res.message, schedule: res.data.schedule, schedules: res.data.schedules };
+        }
+        return { success: false, message: res.message || 'Failed to update schedule.' };
+    },
+    deleteDoctorSchedule: async function(id, doctorId = null) {
+        const csrfToken = await this._ensureCsrfToken();
+        const res = await this._request('doctors/schedules.php', {
+            method: 'POST',
+            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+            body: { action: 'delete', id, ...(doctorId ? { doctorId } : {}) }
+        });
+        if (res.success && res.data) {
+            if (res.data.doctorId) await this.getDoctorById(res.data.doctorId);
+            return { success: true, message: res.message, schedules: res.data.schedules };
+        }
+        return { success: false, message: res.message || 'Failed to delete schedule.' };
+    },
     getAvailableSlots: async function(doctorId, dateString) {
         const doc = await this.getDoctorById(doctorId);
         if (!doc || doc.status !== 'active') return [];
@@ -1070,7 +1333,7 @@ const api = {
     searchAppointments: async function(filters) {
         let appts = this.getAll('appointments');
         const patients = await this._getPatientsListForMockJoin();
-        const doctors = this.getAll('doctors');
+        const doctors = await this._getDoctorsListForMockJoin();
 
         if (filters.doctorId && filters.doctorId !== 'All') appts = appts.filter(a => a.doctorId === filters.doctorId);
         if (filters.status && filters.status !== 'All') appts = appts.filter(a => a.status === filters.status);
@@ -1189,7 +1452,7 @@ const api = {
     getMedicalRecords: async function(filters) {
         let records = this.getAll('medicalRecords');
         const patients = await this._getPatientsListForMockJoin();
-        const doctors = this.getAll('doctors');
+        const doctors = await this._getDoctorsListForMockJoin();
 
         if (filters.patientId) records = records.filter(r => r.patientId === filters.patientId);
         if (filters.doctorId) records = records.filter(r => r.attendingDoctorId === filters.doctorId);
@@ -1270,7 +1533,7 @@ const api = {
     getPrescriptions: async function(filters) {
         let rxs = this.getAll('prescriptions');
         const patients = await this._getPatientsListForMockJoin();
-        const doctors = this.getAll('doctors');
+        const doctors = await this._getDoctorsListForMockJoin();
 
         if (filters.patientId) rxs = rxs.filter(r => r.patientId === filters.patientId);
         if (filters.doctorId && filters.doctorId !== 'All') rxs = rxs.filter(r => r.doctorId === filters.doctorId);
@@ -1364,7 +1627,8 @@ const api = {
         const user = await this.getCurrentUser();
         if (!user || (user.role !== 'doctor' && user.role !== 'admin')) return { success: false, message: 'Unauthorized.' };
         
-        const docId = user.role === 'doctor' ? this.getAll('doctors').find(d => d.userId === user.id)?.id : null;
+        const doctors = await this._getDoctorsListForMockJoin();
+        const docId = user.role === 'doctor' ? doctors.find(d => d.userId === user.id)?.id : null;
         
         const lab = {
             patientId: data.patientId, orderedBy: docId, testName: data.testName, category: data.category,
@@ -1420,7 +1684,7 @@ const api = {
     getAdmissions: async function(filters) {
         let adms = this.getAll('admissions');
         const patients = await this._getPatientsListForMockJoin();
-        const doctors = this.getAll('doctors');
+        const doctors = await this._getDoctorsListForMockJoin();
         const beds = this.getAll('beds');
         const wards = this.getAll('wards');
 
@@ -1764,7 +2028,7 @@ const api = {
         if (type === 'daily-admissions') {
             columns = ['Date', 'Patient ID', 'Patient Name', 'Ward', 'Doctor'];
             const adms = this.getAll('admissions').filter(a => a.admitDate >= dateFrom && a.admitDate <= dateTo);
-            const patients = await this._getPatientsListForMockJoin(); const doctors = this.getAll('doctors'); const beds = this.getAll('beds'); const wards = this.getAll('wards');
+            const patients = await this._getPatientsListForMockJoin(); const doctors = await this._getDoctorsListForMockJoin(); const beds = this.getAll('beds'); const wards = this.getAll('wards');
             
             let dailyCounts = {};
             adms.forEach(a => {
@@ -1781,7 +2045,7 @@ const api = {
         else if (type === 'appointments-summary') {
             columns = ['Date', 'Doctor', 'Type', 'Status', 'Count'];
             const appts = this.getAll('appointments').filter(a => a.date >= dateFrom && a.date <= dateTo);
-            const doctors = this.getAll('doctors');
+            const doctors = await this._getDoctorsListForMockJoin();
             let statusCounts = { Confirmed: 0, Completed: 0, Cancelled: 0, Pending: 0 };
             
             appts.forEach(a => {
@@ -1812,7 +2076,7 @@ const api = {
         }
         else if (type === 'doctor-workload') {
             columns = ['Doctor', 'Completed Appointments', 'Medical Records Written', 'Prescriptions Issued'];
-            const docs = this.getAll('doctors');
+            const docs = await this._getDoctorsListForMockJoin();
             const appts = this.getAll('appointments').filter(a => a.date >= dateFrom && a.date <= dateTo && a.status === 'Completed');
             const records = this.getAll('medicalRecords').filter(r => r.createdAt.split('T')[0] >= dateFrom && r.createdAt.split('T')[0] <= dateTo);
             const rxs = this.getAll('prescriptions').filter(r => r.date >= dateFrom && r.date <= dateTo);
@@ -1946,7 +2210,7 @@ const api = {
         else if (filters.scope === 'past') appts = appts.filter(a => a.date < todayStr || a.status === 'Completed');
         else if (filters.scope === 'cancelled') appts = appts.filter(a => a.status === 'Cancelled');
 
-        const doctors = this.getAll('doctors');
+        const doctors = await this._getDoctorsListForMockJoin();
         return appts.map(a => {
             const d = doctors.find(x => x.id === a.doctorId);
             return { ...a, doctorName: d ? d.name : 'Unknown', specialization: d ? d.specialization : '', fee: d ? d.consultationFee : 0 };
@@ -2003,7 +2267,7 @@ const api = {
     getMyMedicalRecords: async function() {
         const ctx = await this._getPatientContext();
         if (ctx.error) return [];
-        const doctors = this.getAll('doctors');
+        const doctors = await this._getDoctorsListForMockJoin();
         return this.getAll('medicalRecords').filter(r => r.patientId === ctx.patient.id).map(r => {
             const d = doctors.find(x => x.id === r.attendingDoctorId);
             return { id: r.id, date: r.createdAt.split('T')[0], chiefComplaint: r.chiefComplaint, diagnosis: r.diagnosis, treatmentNotes: r.treatmentNotes, followUpDate: r.followUpDate, doctorName: d ? d.name : 'Unknown' };
@@ -2013,7 +2277,7 @@ const api = {
     getMyPrescriptions: async function() {
         const ctx = await this._getPatientContext();
         if (ctx.error) return [];
-        const doctors = this.getAll('doctors');
+        const doctors = await this._getDoctorsListForMockJoin();
         return this.getAll('prescriptions').filter(r => r.patientId === ctx.patient.id).map(r => {
             const d = doctors.find(x => x.id === r.doctorId);
             return { ...r, doctorName: d ? d.name : 'Unknown' };
@@ -2035,7 +2299,7 @@ const api = {
     getMyAdmissions: async function() {
         const ctx = await this._getPatientContext();
         if (ctx.error) return [];
-        const doctors = this.getAll('doctors');
+        const doctors = await this._getDoctorsListForMockJoin();
         const wards = this.getAll('wards');
         const beds = this.getAll('beds');
         return this.getAll('admissions').filter(a => a.patientId === ctx.patient.id).map(a => {
@@ -2130,7 +2394,7 @@ const api = {
         const ctx = await this._getPatientContext();
         if (ctx.error) return [];
         const todayStr = new Date().toLocaleDateString('en-CA');
-        const doctors = this.getAll('doctors');
+        const doctors = await this._getDoctorsListForMockJoin();
         return this.getAll('appointments').filter(a => a.patientId === ctx.patient.id && a.type === 'telehealth' && a.date >= todayStr && (a.status === 'Confirmed' || a.status === 'Pending')).map(a => {
             const d = doctors.find(x => x.id === a.doctorId);
             return { ...a, doctorName: d ? d.name : 'Unknown' };
