@@ -24,10 +24,11 @@ const api = {
     // 0. PHP BACKEND TRANSPORT & HEALTH CHECK (Phase 5.1)
     // ==========================================
     _backendConfig: {
-        // Feature flags for incremental module migration in Phase 5.2+.
-        // All flags remain `false` in Phase 5.1 so existing localStorage logic runs unchanged.
+        // Feature flags for incremental module migration.
+        // Only `auth` is enabled (Phase 5.2); every other flag stays `false` so the
+        // remaining modules keep running on localStorage mock data unchanged.
         modules: {
-            auth: false,
+            auth: true,   // Phase 5.2: login/logout/session handled by PHP (api.auth.*)
             users: false,
             publicData: false,
             patients: false,
@@ -127,6 +128,145 @@ const api = {
     },
 
     // ==========================================
+    // 0b. PHP AUTHENTICATION (Phase 5.2)
+    // ==========================================
+    // The PHP session (HttpOnly cookie, invisible to JavaScript) is the ONLY source of
+    // truth for "who is logged in". Nothing in this block touches the mock-data
+    // authentication logic further below; `api.login()` / `api.logout()` simply delegate
+    // here while `_backendConfig.modules.auth` is true.
+    //
+    // Every method is async and resolves to the standard envelope:
+    //   { success, message, data, status }   (status 0 = network error)
+    //
+    // Security notes:
+    //  - No password, password hash, or session ID is ever stored in localStorage.
+    //  - The CSRF token is kept in JavaScript MEMORY only and re-fetched via `me()`
+    //    after each page load.
+    //  - For the still-unmigrated mock modules, a SAFE copy of the user (no password) is
+    //    cached in `primecare_currentUser` after the server confirms the session. That cache
+    //    is UI-only: it grants nothing on the server and is overwritten/cleared from the
+    //    server's answer on every page load (see app.js renderShell).
+    auth: {
+        _csrfToken: null,
+
+        /** Fetch a CSRF token bound to the current (maybe anonymous) session. */
+        _fetchCsrfToken: async function() {
+            const res = await api._request('auth/csrf.php', { method: 'GET' });
+            if (res.success && res.data && res.data.csrfToken) {
+                api.auth._csrfToken = res.data.csrfToken;
+            }
+            return res;
+        },
+
+        /**
+         * Store a safe, legacy-shaped copy of the server-confirmed user so the mock-data
+         * modules (which still read `primecare_currentUser`) keep working.
+         * Mock-record extras (createdBy, etc.) are merged in, but the mock `password`
+         * field is always dropped and server values always win.
+         */
+        _cacheLegacyUser: function(serverUser) {
+            let mock = {};
+            try { mock = api.getAll('users').find(u => u.id === serverUser.id) || {}; } catch (e) { mock = {}; }
+            const { password, ...mockSafe } = mock;
+            const merged = Object.assign({}, mockSafe, {
+                id: serverUser.id,
+                username: serverUser.username,
+                fullName: serverUser.fullName,
+                role: serverUser.role,
+                status: serverUser.status,
+                email: serverUser.email,
+                mobile: serverUser.mobile,
+                mustChangePassword: serverUser.mustChangePassword,
+                lastLogin: serverUser.lastLogin,
+                createdAt: serverUser.createdAt || mockSafe.createdAt
+            });
+            localStorage.setItem('primecare_currentUser', JSON.stringify(merged));
+            // A simulated role belongs to one login only.
+            sessionStorage.removeItem('primecare_sim_role');
+        },
+
+        /** Forget everything the browser knows about the signed-in user (UI state only). */
+        _clearClientState: function() {
+            api.auth._csrfToken = null;
+            localStorage.removeItem('primecare_currentUser');
+            localStorage.removeItem('primecare_preview');
+            sessionStorage.removeItem('primecare_sim_role');
+            sessionStorage.removeItem('primecare_preview');
+        },
+
+        /**
+         * Log in through PHP.
+         * @param {{username: string, password: string}} credentials
+         * @returns {Promise<{success, message, data: ({user, csrfToken}|null), status}>}
+         */
+        login: async function(credentials) {
+            const username = String((credentials && credentials.username) || '').trim();
+            const password = String((credentials && credentials.password) || '');
+            if (!username || !password) {
+                return { success: false, message: 'Please enter your username and password.', data: null, status: 400 };
+            }
+
+            const csrf = await api.auth._fetchCsrfToken();
+            if (!csrf.success) {
+                return {
+                    success: false,
+                    message: csrf.status === 0
+                        ? csrf.message
+                        : 'Unable to start a secure login session. Please try again.',
+                    data: null,
+                    status: csrf.status
+                };
+            }
+
+            const res = await api._request('auth/login.php', {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': api.auth._csrfToken },
+                body: { username, password }
+            });
+
+            if (res.success && res.data && res.data.user) {
+                api.auth._csrfToken = res.data.csrfToken || null;
+                api.auth._cacheLegacyUser(res.data.user);
+            }
+            return res;
+        },
+
+        /**
+         * Ask PHP who is logged in. 401 clears the local UI cache.
+         * Network errors (status 0) leave the cache untouched so callers can decide.
+         */
+        me: async function() {
+            const res = await api._request('auth/me.php', { method: 'GET' });
+            if (res.success && res.data && res.data.user) {
+                api.auth._csrfToken = res.data.csrfToken || null;
+                api.auth._cacheLegacyUser(res.data.user);
+            } else if (res.status === 401) {
+                api.auth._clearClientState();
+            }
+            return res;
+        },
+
+        /**
+         * Log out through PHP (destroys the server session + cookie), then always clear
+         * local UI state, even if the request fails.
+         */
+        logout: async function() {
+            let res = { success: true, message: 'Logged out.', data: null, status: 200 };
+            try {
+                if (!api.auth._csrfToken) await api.auth.me();   // recovers the token after a page load
+                res = await api._request('auth/logout.php', {
+                    method: 'POST',
+                    headers: api.auth._csrfToken ? { 'X-CSRF-Token': api.auth._csrfToken } : {},
+                    body: {}
+                });
+            } finally {
+                api.auth._clearClientState();
+            }
+            return res;
+        }
+    },
+
+    // ==========================================
     // 1. GENERIC HELPERS & SYSTEM
     // ==========================================
     getAll: function(collection) { return JSON.parse(localStorage.getItem(`primecare_${collection}`)) || []; },
@@ -184,6 +324,13 @@ const api = {
     // 2. AUTHENTICATION & USER MANAGEMENT
     // ==========================================
     login: async function(username, password) {
+        // Phase 5.2: when PHP auth is enabled this delegates to the real server login.
+        // The mock-data login below only runs if `_backendConfig.modules.auth` is turned off.
+        if (this._backendConfig.modules.auth) {
+            const res = await this.auth.login({ username, password });
+            if (res.success) this.logActivity('Login', 'User logged in.');
+            return { success: res.success, message: res.message, user: res.success && res.data ? res.data.user : undefined };
+        }
         let users = this.getAll('users');
         const cleanUser = username.trim().toLowerCase();
         const idx = users.findIndex(u => u.username.trim().toLowerCase() === cleanUser && u.password === password);
@@ -196,7 +343,12 @@ const api = {
         this.logActivity('Login', 'User logged in.');
         return { success: true, message: 'Login successful.', user: users[idx] };
     },
-    logout: async function() { this.logActivity('Logout', 'User logged out.'); localStorage.removeItem('primecare_currentUser'); },
+    logout: async function() {
+        this.logActivity('Logout', 'User logged out.');
+        // Phase 5.2: destroy the PHP session too (also clears local UI state).
+        if (this._backendConfig.modules.auth) { await this.auth.logout(); return; }
+        localStorage.removeItem('primecare_currentUser');
+    },
     getCurrentUser: async function() { return JSON.parse(localStorage.getItem('primecare_currentUser')); },
     changeOwnPassword: async function(oldPw, newPw) {
         const user = await this.getCurrentUser();

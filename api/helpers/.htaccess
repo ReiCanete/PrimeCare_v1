@@ -1,0 +1,4 @@
+# Block direct web access to configuration and helper files (Apache 2.4).
+# They are only ever loaded by PHP via require_once.
+Require all denied
+

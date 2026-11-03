@@ -6,7 +6,12 @@ async function renderPublicLayout() {
     if (!navContainer || !footerContainer) return;
 
     let user = null;
-    try { user = await api.getCurrentUser(); } catch (e) { console.error('[PRIMECARE] getCurrentUser failed:', e); }
+    try {
+        // Phase 5.2: the PHP session decides whether the visitor is logged in.
+        // me() refreshes (or clears) the UI cache of the signed-in user before we read it.
+        if (api._backendConfig && api._backendConfig.modules.auth && api.auth) await api.auth.me();
+        user = await api.getCurrentUser();
+    } catch (e) { console.error('[PRIMECARE] getCurrentUser failed:', e); }
     
     // Auth buttons logic
     let authHTML = '';

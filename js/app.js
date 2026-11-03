@@ -112,6 +112,24 @@ const MENU_CONFIG = {
     ]
 };
 
+// =============================================================================
+// DEV ROLE SIMULATOR (UI-only) — Phase 5.2 notes
+// -----------------------------------------------------------------------------
+// The simulator is a development convenience for exercising the still-unmigrated
+// mock-data screens as another role. It:
+//   - NEVER calls PHP and never changes the PHP session, so it grants NO server-side
+//     permissions. PHP endpoints use the role stored in the database for the real,
+//     logged-in account (requireAuth()/requireRole()).
+//   - Is only offered to a user whose REAL PHP-authenticated role is 'admin'.
+//     Staff, doctors, nurses and patients never see it and cannot simulate.
+//   - Is cleared on every login and logout.
+// Set FEATURES.roleSimulator = false to switch it off completely.
+// =============================================================================
+function isRoleSimulatorAvailable(realUser) {
+    const devFlag = FEATURES.roleSimulator || (new URLSearchParams(window.location.search).get('dev') === '1');
+    return !!(devFlag && realUser && realUser.role === 'admin');
+}
+
 if (typeof api !== 'undefined' && typeof api.getCurrentUser === 'function') {
     const _rawGetCurrentUser = api.getCurrentUser.bind(api);
     api.getRealUser = async () => await _rawGetCurrentUser();
@@ -121,9 +139,8 @@ if (typeof api !== 'undefined' && typeof api.getCurrentUser === 'function') {
         if (!realUser) return null;
 
         const simRole = sessionStorage.getItem('primecare_sim_role');
-        const isDevOrSim = FEATURES.roleSimulator || (new URLSearchParams(window.location.search).get('dev') === '1');
         
-        if (isDevOrSim && realUser.role !== 'patient' && simRole && simRole !== realUser.role) {
+        if (isRoleSimulatorAvailable(realUser) && simRole && simRole !== realUser.role) {
             const users = api.getAll ? api.getAll('users') : [];
             const target = users.find(u => u.role === simRole);
             if (target) {
@@ -429,11 +446,24 @@ async function renderShell() {
     const area = document.body.getAttribute('data-area');
     if (area === 'public' || area === 'auth') return;
 
+    const isSubFolder = window.location.pathname.includes('/patient/') || window.location.pathname.includes('/staff/');
+
+    // Phase 5.2: the PHP session is the source of truth. Verify it once per page load.
+    // me() refreshes the UI cache from the server on success and clears it on 401.
+    // If the session is missing/expired (or the server cannot be reached) we fail closed.
+    if (api._backendConfig && api._backendConfig.modules.auth && api.auth && !window.__primecareSessionVerified) {
+        const session = await api.auth.me();
+        if (!session.success) {
+            window.location.href = isSubFolder ? '../login.html' : 'login.html';
+            return;
+        }
+        window.__primecareSessionVerified = true;
+    }
+
     const user = await api.getCurrentUser();
     const realUser = typeof api.getRealUser === 'function' ? await api.getRealUser() : user;
 
     if (!user || !realUser) {
-        const isSubFolder = window.location.pathname.includes('/patient/') || window.location.pathname.includes('/staff/');
         window.location.href = isSubFolder ? '../login.html' : 'login.html';
         return;
     }
@@ -502,9 +532,8 @@ const menuItems = roleMenu.map(item => `
         </aside>
     `;
 
-    const isDevOrSim = FEATURES.roleSimulator || (new URLSearchParams(window.location.search).get('dev') === '1');
     let simulatorHTML = '';
-    if (isDevOrSim && realUser.role !== 'patient') {
+    if (isRoleSimulatorAvailable(realUser)) {
         const roles = ['admin', 'doctor', 'nurse', 'staff', 'patient'];
         const roleOptions = roles.map(r =>
             `<option value="${r}" ${user.role === r ? 'selected' : ''}>Simulate: ${r.toUpperCase()}</option>`
@@ -512,7 +541,7 @@ const menuItems = roleMenu.map(item => `
         simulatorHTML = `
             <div class="dev-pill">
                 <span class="dev-tag">DEV</span>
-                <select class="role-sim-select" onchange="simulateRole(this.value)" title="Role Simulator">
+                <select class="role-sim-select" onchange="simulateRole(this.value)" title="Role Simulator (UI preview only: does not change your PHP login or server permissions)">
                     ${roleOptions}
                 </select>
             </div>
@@ -672,6 +701,9 @@ window.simulateRole = async function (role) {
     const realUser = typeof api.getRealUser === 'function' ? await api.getRealUser() : await api.getCurrentUser();
     if (!realUser || realUser.role === 'patient') return;
 
+    // Switching to another role is a UI-only dev feature (admin sessions only).
+    // Returning to your own real role is always allowed (used by the Preview banner).
+    if (role !== realUser.role && !isRoleSimulatorAvailable(realUser)) return;
     if (role === realUser.role) {
         sessionStorage.removeItem('primecare_sim_role');
     } else {

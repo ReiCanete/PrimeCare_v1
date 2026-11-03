@@ -8,16 +8,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // --- LOGIN ---
+// Phase 5.2: authentication is performed by the PHP backend (api.auth.login).
+// The server-side PHP session is the source of truth; nothing here decides who is logged in.
 async function initLogin() {
     const form = document.getElementById('login-form');
     const btn = document.getElementById('login-btn');
     const toggle = document.getElementById('toggle-password');
     const passInput = document.getElementById('password');
+    let submitting = false;
 
-    // Redirect if already logged in
-    const user = await api.getCurrentUser();
-    if (user) {
-        window.location.href = user.role === 'patient' ? 'patient/home.html' : 'staff/dashboard.html';
+    const portalFor = (user) => user.role === 'patient' ? 'patient/home.html' : 'staff/dashboard.html';
+
+    // Redirect if the PHP session is still valid (survives refresh). A 401 simply
+    // clears any stale UI cache and leaves the login form visible.
+    const existing = await api.auth.me();
+    if (existing.success && existing.data && existing.data.user) {
+        window.location.href = portalFor(existing.data.user);
+        return;
     }
 
     toggle.addEventListener('click', () => {
@@ -28,43 +35,36 @@ async function initLogin() {
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        
-        // Check Lockout
-        const lockout = sessionStorage.getItem('primecare_lockout');
-        if (lockout && Date.now() < parseInt(lockout)) {
-            const left = Math.ceil((parseInt(lockout) - Date.now()) / 1000);
-            utils.showAlert('alert-container', 'danger', `Too many failed attempts. Try again in ${left}s.`);
+        if (submitting) return; // prevent duplicate submissions
+
+        const u = document.getElementById('username').value.trim();
+        const p = passInput.value;
+
+        if (!u || !p) {
+            utils.showAlert('alert-container', 'danger', 'Please enter your username and password.');
             return;
         }
 
-        const u = document.getElementById('username').value;
-        const p = passInput.value;
-        
+        submitting = true;
         btn.disabled = true;
         btn.innerText = 'Processing...';
 
         try {
-            const res = await api.login(u, p);
-            if (res.success) {
-                sessionStorage.removeItem('primecare_attempts');
-                window.location.href = res.user.role === 'patient' ? 'patient/home.html' : 'staff/dashboard.html';
-            } else {
-                let attempts = parseInt(sessionStorage.getItem('primecare_attempts') || '0') + 1;
-                sessionStorage.setItem('primecare_attempts', attempts);
-                if (attempts >= 5) {
-                    sessionStorage.setItem('primecare_lockout', Date.now() + 30000); // 30s
-                    utils.showAlert('alert-container', 'danger', 'Account locked for 30 seconds due to multiple failed attempts.');
-                } else {
-                    utils.showAlert('alert-container', 'danger', res.message);
-                }
-                btn.disabled = false;
-                btn.innerText = 'Log In';
+            const res = await api.auth.login({ username: u, password: p });
+            if (res.success && res.data && res.data.user) {
+                passInput.value = '';
+                window.location.href = portalFor(res.data.user);
+                return;
             }
+            // Server messages are intentionally generic (never reveal which field was wrong).
+            utils.showAlert('alert-container', 'danger', utils.escapeHTML(res.message || 'Unable to log in. Please try again.'));
         } catch (error) {
             utils.showAlert('alert-container', 'danger', 'An error occurred during login.');
-            btn.disabled = false;
-            btn.innerText = 'Log In';
         }
+
+        submitting = false;
+        btn.disabled = false;
+        btn.innerText = 'Log In';
     });
 }
 

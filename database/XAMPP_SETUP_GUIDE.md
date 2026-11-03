@@ -179,3 +179,10 @@ It will return the parsed JSON object from the PHP backend without affecting any
 - **Cause:** Apache is not running, or the project folder name inside `C:\xampp\htdocs\` is different.
 - **Fix:** Ensure **Apache** is started in XAMPP Control Panel and the project folder is located at `C:\xampp\htdocs\PrimeCare_v1`.
 
+
+---
+
+## 8. Authentication (Phase 5.2)
+
+Login, logout, sessions and role checks are documented in [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md). Run `node tests\auth-smoke-test.mjs` after importing the database to verify them.
+
