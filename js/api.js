@@ -36,6 +36,7 @@ const api = {
             appointments: true, // Phase 5.6: appointment management, online booking & pre-visit forms handled by PHP (api/appointments/*.php)
             clinical: false,
             medicalRecords: true, // Phase 5.7: EHR / medical records & vitals handled by PHP (api/medical-records/*.php)
+            prescriptions: true,  // Phase 5.8: Prescriptions & pharmacy handled by PHP (api/prescriptions/*.php)
             wards: false,
             billing: false,
             reports: false,
@@ -379,6 +380,55 @@ const api = {
             if (Array.isArray(list)) return list;
         } catch (e) {}
         return this.getAll('medicalRecords');
+    },
+
+    /**
+     * Keep in-memory / localStorage cache in sync for unmigrated modules (billing, dashboard).
+     */
+    _syncPrescriptionCache: function(rxOrList, options = {}) {
+        try {
+            let current = this.getAll('prescriptions');
+            if (options.replaceAll && Array.isArray(rxOrList)) {
+                localStorage.setItem('primecare_prescriptions', JSON.stringify(rxOrList));
+                return;
+            }
+            if (options.deletedId) {
+                current = current.filter(r => r.id !== options.deletedId);
+            }
+            const items = Array.isArray(rxOrList) ? rxOrList : (rxOrList ? [rxOrList] : []);
+            items.forEach(item => {
+                if (!item || !item.id) return;
+                const idx = current.findIndex(r => r.id === item.id);
+                if (idx !== -1) {
+                    current[idx] = { ...current[idx], ...item };
+                } else {
+                    current.push(item);
+                }
+            });
+            localStorage.setItem('primecare_prescriptions', JSON.stringify(current));
+        } catch (e) {
+            // Ignore localStorage quota errors
+        }
+    },
+
+    /**
+     * Helper used by unmigrated async consumers (reports) to ensure prescriptions are fetched
+     * from MySQL before aggregating.
+     */
+    _getPrescriptionsListForMockJoin: async function() {
+        if (!this._backendConfig.modules.prescriptions) {
+            return this.getAll('prescriptions');
+        }
+        if (!this._prescriptionsFetchPromise) {
+            this._prescriptionsFetchPromise = this.getPrescriptions({}).finally(() => {
+                setTimeout(() => { this._prescriptionsFetchPromise = null; }, 1500);
+            });
+        }
+        try {
+            const list = await this._prescriptionsFetchPromise;
+            if (Array.isArray(list)) return list;
+        } catch (e) {}
+        return this.getAll('prescriptions');
     },
 
     // ==========================================
@@ -1901,14 +1951,32 @@ const api = {
         }
         return { success: true, message: 'Vitals recorded successfully.' };
     },
-    getPrescriptions: async function(filters) {
+    getPrescriptions: async function(filters = {}) {
+        const safeFilters = filters || {};
+        if (this._backendConfig.modules.prescriptions) {
+            const params = {};
+            if (safeFilters.patientId) params.patientId = safeFilters.patientId;
+            if (safeFilters.doctorId && safeFilters.doctorId !== 'All') params.doctorId = safeFilters.doctorId;
+            if (safeFilters.status && safeFilters.status !== 'All') params.status = safeFilters.status;
+            if (safeFilters.keyword) params.keyword = safeFilters.keyword;
+            if (safeFilters.dateFrom) params.dateFrom = safeFilters.dateFrom;
+            if (safeFilters.dateTo) params.dateTo = safeFilters.dateTo;
+            const res = await this._request('prescriptions/list.php', { method: 'GET', params });
+            if (res.success && res.data && Array.isArray(res.data.prescriptions)) {
+                const isUnfiltered = Object.keys(params).length === 0;
+                this._syncPrescriptionCache(res.data.prescriptions, isUnfiltered ? { replaceAll: true } : {});
+                return res.data.prescriptions;
+            }
+            return [];
+        }
+
         let rxs = this.getAll('prescriptions');
         const patients = await this._getPatientsListForMockJoin();
         const doctors = await this._getDoctorsListForMockJoin();
 
-        if (filters.patientId) rxs = rxs.filter(r => r.patientId === filters.patientId);
-        if (filters.doctorId && filters.doctorId !== 'All') rxs = rxs.filter(r => r.doctorId === filters.doctorId);
-        if (filters.status && filters.status !== 'All') rxs = rxs.filter(r => r.status === filters.status);
+        if (safeFilters.patientId) rxs = rxs.filter(r => r.patientId === safeFilters.patientId);
+        if (safeFilters.doctorId && safeFilters.doctorId !== 'All') rxs = rxs.filter(r => r.doctorId === safeFilters.doctorId);
+        if (safeFilters.status && safeFilters.status !== 'All') rxs = rxs.filter(r => r.status === safeFilters.status);
 
         rxs = rxs.map(r => {
             const p = patients.find(x => x.id === r.patientId);
@@ -1916,13 +1984,23 @@ const api = {
             return { ...r, patientName: p ? p.fullName : 'Unknown', doctorName: d ? d.name : 'Unknown' };
         });
 
-        if (filters.keyword) {
-            const kw = filters.keyword.toLowerCase();
+        if (safeFilters.keyword) {
+            const kw = safeFilters.keyword.toLowerCase();
             rxs = rxs.filter(r => r.id.toLowerCase().includes(kw) || r.patientName.toLowerCase().includes(kw) || r.items.some(i => i.medicine.toLowerCase().includes(kw)));
         }
         return rxs.sort((a, b) => b.date.localeCompare(a.date));
     },
-    getPrescriptionById: async function(id) { return this.getById('prescriptions', id); },
+    getPrescriptionById: async function(id) {
+        if (this._backendConfig.modules.prescriptions) {
+            const res = await this._request('prescriptions/get.php', { method: 'GET', params: { id } });
+            if (res.success && res.data && res.data.prescription) {
+                this._syncPrescriptionCache(res.data.prescription);
+                return res.data.prescription;
+            }
+            return null;
+        }
+        return this.getById('prescriptions', id);
+    },
     checkAllergyConflict: async function(patientId, items) {
         const p = await this.getPatientById(patientId);
         if (!p || !p.allergies || p.allergies.toLowerCase() === 'none') return [];
@@ -1938,6 +2016,36 @@ const api = {
         return conflicts;
     },
     createPrescription: async function(rx) {
+        if (this._backendConfig.modules.prescriptions) {
+            const csrf = await this._csrfHeaders();
+            const res = await this._request('prescriptions/create.php', {
+                method: 'POST',
+                headers: { ...csrf },
+                body: rx
+            });
+            if (res.success && res.data && res.data.prescription) {
+                this._syncPrescriptionCache(res.data.prescription);
+                return {
+                    success: true,
+                    message: res.message || 'Prescription created successfully.',
+                    prescription: res.data.prescription
+                };
+            }
+            const extra = (res.data && typeof res.data === 'object') ? res.data : {};
+            if (res.status === 409 || extra.allergyConflict || res.allergyConflict) {
+                return {
+                    success: false,
+                    allergyConflict: true,
+                    conflicts: extra.conflicts || res.conflicts || [],
+                    message: res.message || 'Allergy conflict detected.'
+                };
+            }
+            return {
+                success: false,
+                message: res.message || 'Failed to create prescription.'
+            };
+        }
+
         const user = await this.getCurrentUser();
         if (!user || (user.role !== 'doctor' && user.role !== 'admin')) return { success: false, message: 'Unauthorized.' };
         if (!rx.items || rx.items.length === 0) return { success: false, message: 'At least one medicine is required.' };
@@ -1957,6 +2065,26 @@ const api = {
         return { success: true, message: 'Prescription created successfully.', prescription: saved };
     },
     updatePrescriptionStatus: async function(id, status) {
+        if (this._backendConfig.modules.prescriptions) {
+            const csrf = await this._csrfHeaders();
+            const res = await this._request('prescriptions/status.php', {
+                method: 'POST',
+                headers: { ...csrf },
+                body: { id, status }
+            });
+            if (res.success) {
+                this._syncPrescriptionCache({ id, status });
+                return {
+                    success: true,
+                    message: res.message || `Prescription marked as ${status}.`
+                };
+            }
+            return {
+                success: false,
+                message: res.message || `Failed to mark prescription as ${status}.`
+            };
+        }
+
         const user = await this.getCurrentUser();
         if (!user || (user.role !== 'nurse' && user.role !== 'admin' && user.role !== 'doctor')) return { success: false, message: 'Unauthorized.' };
         
@@ -2458,7 +2586,7 @@ const api = {
             const allAppts = await this._getAppointmentsListForMockJoin();
             const appts = allAppts.filter(a => a.date >= dateFrom && a.date <= dateTo && a.status === 'Completed');
             const records = (await this._getMedicalRecordsListForMockJoin()).filter(r => (r.createdAt || '').split('T')[0] >= dateFrom && (r.createdAt || '').split('T')[0] <= dateTo);
-            const rxs = this.getAll('prescriptions').filter(r => r.date >= dateFrom && r.date <= dateTo);
+            const rxs = (await this._getPrescriptionsListForMockJoin()).filter(r => r.date >= dateFrom && r.date <= dateTo);
             
             docs.forEach(d => {
                 const aCount = appts.filter(a => a.doctorId === d.id).length;
@@ -2722,6 +2850,14 @@ const api = {
     },
 
     getMyPrescriptions: async function() {
+        if (this._backendConfig.modules.prescriptions) {
+            const res = await this._request('prescriptions/list.php', { method: 'GET', params: { my: 1 } });
+            if (res.success && res.data && Array.isArray(res.data.prescriptions)) {
+                this._syncPrescriptionCache(res.data.prescriptions);
+                return res.data.prescriptions.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+            }
+            return [];
+        }
         const ctx = await this._getPatientContext();
         if (ctx.error) return [];
         const doctors = await this._getDoctorsListForMockJoin();
