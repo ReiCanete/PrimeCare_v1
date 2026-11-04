@@ -38,7 +38,7 @@ const api = {
             medicalRecords: true, // Phase 5.7: EHR / medical records & vitals handled by PHP (api/medical-records/*.php)
             prescriptions: true,  // Phase 5.8: Prescriptions & pharmacy handled by PHP (api/prescriptions/*.php)
             wards: false,
-            billing: false,
+            billing: true,        // Phase 5.9: Billing & Payments handled by PHP (api/billing/*.php)
             reports: false,
             patientPortal: false
         }
@@ -429,6 +429,55 @@ const api = {
             if (Array.isArray(list)) return list;
         } catch (e) {}
         return this.getAll('prescriptions');
+    },
+
+    /**
+     * Keep in-memory / localStorage cache in sync for unmigrated modules (dashboard, reports).
+     */
+    _syncBillCache: function(billOrList, options = {}) {
+        try {
+            let current = this.getAll('bills');
+            if (options.replaceAll && Array.isArray(billOrList)) {
+                localStorage.setItem('primecare_bills', JSON.stringify(billOrList));
+                return;
+            }
+            if (options.deletedId) {
+                current = current.filter(b => b.id !== options.deletedId);
+            }
+            const items = Array.isArray(billOrList) ? billOrList : (billOrList ? [billOrList] : []);
+            items.forEach(item => {
+                if (!item || !item.id) return;
+                const idx = current.findIndex(b => b.id === item.id);
+                if (idx !== -1) {
+                    current[idx] = { ...current[idx], ...item };
+                } else {
+                    current.push(item);
+                }
+            });
+            localStorage.setItem('primecare_bills', JSON.stringify(current));
+        } catch (e) {
+            // Ignore localStorage quota errors
+        }
+    },
+
+    /**
+     * Helper used by unmigrated async consumers (reports, dashboard) to ensure bills are fetched
+     * from MySQL before aggregating.
+     */
+    _getBillsListForMockJoin: async function() {
+        if (!this._backendConfig.modules.billing) {
+            return this.getAll('bills');
+        }
+        if (!this._billsFetchPromise) {
+            this._billsFetchPromise = this.getBills({}).finally(() => {
+                setTimeout(() => { this._billsFetchPromise = null; }, 1500);
+            });
+        }
+        try {
+            const list = await this._billsFetchPromise;
+            if (Array.isArray(list)) return list;
+        } catch (e) {}
+        return this.getAll('bills');
     },
 
     // ==========================================
@@ -2302,7 +2351,19 @@ const api = {
     // ==========================================
     // 7. BILLING & REPORTS (STAFF SIDE)
     // ==========================================
-    getBills: async function(filters) {
+    getBills: async function(filters = {}) {
+        if (this._backendConfig.modules.billing) {
+            const res = await this._request('billing/list.php', {
+                method: 'GET',
+                params: filters
+            });
+            if (res.success && res.data && Array.isArray(res.data.bills)) {
+                this._syncBillCache(res.data.bills);
+                return res.data.bills;
+            }
+            return [];
+        }
+
         let bills = this.getAll('bills');
         const patients = await this._getPatientsListForMockJoin();
         if (filters.patientId) bills = bills.filter(b => b.patientId === filters.patientId);
@@ -2321,8 +2382,32 @@ const api = {
         }
         return bills.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     },
-    getBillById: async function(id) { return this.getById('bills', id); },
+    getBillById: async function(id) {
+        if (this._backendConfig.modules.billing) {
+            const res = await this._request('billing/get.php', {
+                method: 'GET',
+                params: { id }
+            });
+            if (res.success && res.data && res.data.bill) {
+                this._syncBillCache(res.data.bill);
+                return res.data.bill;
+            }
+            return null;
+        }
+        return this.getById('bills', id);
+    },
     previewBillCharges: async function(patientId) {
+        if (this._backendConfig.modules.billing) {
+            const res = await this._request('billing/preview.php', {
+                method: 'GET',
+                params: { patientId }
+            });
+            if (res.success && res.data && Array.isArray(res.data.items)) {
+                return res.data.items;
+            }
+            return [];
+        }
+
         const items = [];
         this.getAll('admissions').filter(a => a.patientId === patientId && !a.billed).forEach(a => {
             const bed = this.getById('beds', a.bedId);
@@ -2360,6 +2445,19 @@ const api = {
         return items;
     },
     createBill: async function(data) {
+        if (this._backendConfig.modules.billing) {
+            const res = await this._request('billing/create.php', {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: data
+            });
+            if (res.success && res.data && res.data.bill) {
+                this._syncBillCache(res.data.bill);
+                return { success: true, message: res.message || 'Bill created successfully.', bill: res.data.bill };
+            }
+            return { success: false, message: res.message || 'Failed to create bill.' };
+        }
+
         const user = await this.getCurrentUser();
         if (!user || (user.role !== 'admin' && user.role !== 'staff')) return { success: false, message: 'Unauthorized.' };
         if (!data.items || data.items.length === 0) return { success: false, message: 'Bill must contain at least one item.' };
@@ -2435,6 +2533,24 @@ const api = {
         return { success: true, message: 'Item removed.' };
     },
     recordPayment: async function(billId, data) {
+        if (this._backendConfig.modules.billing) {
+            const res = await this._request('billing/pay.php', {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: { billId, ...data }
+            });
+            if (res.success && res.data) {
+                if (res.data.bill) this._syncBillCache(res.data.bill);
+                return {
+                    success: true,
+                    message: res.message || 'Payment recorded successfully.',
+                    receipt: res.data.receipt,
+                    bill: res.data.bill
+                };
+            }
+            return { success: false, message: res.message || 'Failed to record payment.' };
+        }
+
         const user = await this.getCurrentUser();
         if (!user || (user.role !== 'admin' && user.role !== 'staff' && user.role !== 'patient')) return { success: false, message: 'Unauthorized.' };
         
@@ -2465,6 +2581,22 @@ const api = {
         return { success: true, message: 'Payment recorded successfully.', receipt: payment, bill: bills[idx] };
     },
     voidBill: async function(id, reason) {
+        if (this._backendConfig.modules.billing) {
+            const res = await this._request('billing/void.php', {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: { id, reason }
+            });
+            if (res.success) {
+                const cached = this.getById('bills', id);
+                if (cached) {
+                    this._syncBillCache({ ...cached, status: 'Voided', voidReason: reason });
+                }
+                return { success: true, message: res.message || 'Bill voided successfully.' };
+            }
+            return { success: false, message: res.message || 'Failed to void bill.' };
+        }
+
         const user = await this.getCurrentUser();
         if (!user || user.role !== 'admin') return { success: false, message: 'Only admins can void bills.' };
         if (!reason || reason.length < 10) return { success: false, message: 'Reason must be at least 10 characters.' };
@@ -2494,6 +2626,18 @@ const api = {
         return { success: true, message: 'Bill voided successfully.' };
     },
     getReceipt: async function(receiptNo) {
+        if (this._backendConfig.modules.billing) {
+            const res = await this._request('billing/receipt.php', {
+                method: 'GET',
+                params: { receiptNo }
+            });
+            if (res.success && res.data && res.data.receipt) {
+                if (res.data.bill) this._syncBillCache(res.data.bill);
+                return { receipt: res.data.receipt, bill: res.data.bill };
+            }
+            return null;
+        }
+
         const bills = this.getAll('bills');
         for (let b of bills) {
             const p = b.payments.find(x => x.receiptNo === receiptNo);
@@ -2502,6 +2646,19 @@ const api = {
         return null;
     },
     getBillingSummary: async function() {
+        if (this._backendConfig.modules.billing) {
+            const res = await this._request('billing/summary.php', {
+                method: 'GET'
+            });
+            if (res.success && res.data) {
+                return res.data;
+            }
+            return {
+                unpaidTotal: 0, collectedToday: 0, collectedMonth: 0,
+                countUnpaid: 0, countPartial: 0, countPaid: 0
+            };
+        }
+
         const bills = this.getAll('bills');
         let unpaidTotal = 0, collectedToday = 0, collectedMonth = 0;
         const todayStr = new Date().toLocaleDateString('en-CA');
@@ -2893,7 +3050,19 @@ const api = {
         }).sort((a, b) => b.admitDate.localeCompare(a.admitDate));
     },
 
-    getMyBills: async function(filters) {
+    getMyBills: async function(filters = {}) {
+        if (this._backendConfig.modules.billing) {
+            const res = await this._request('billing/list.php', {
+                method: 'GET',
+                params: { my: 1, ...(filters || {}) }
+            });
+            if (res.success && res.data && Array.isArray(res.data.bills)) {
+                this._syncBillCache(res.data.bills);
+                return res.data.bills;
+            }
+            return [];
+        }
+
         const ctx = await this._getPatientContext();
         if (ctx.error) return [];
         let bills = this.getAll('bills').filter(b => b.patientId === ctx.patient.id);
@@ -2902,6 +3071,18 @@ const api = {
     },
 
     getMyBillById: async function(id) {
+        if (this._backendConfig.modules.billing) {
+            const res = await this._request('billing/get.php', {
+                method: 'GET',
+                params: { id }
+            });
+            if (res.success && res.data && res.data.bill) {
+                this._syncBillCache(res.data.bill);
+                return res.data.bill;
+            }
+            return null;
+        }
+
         const ctx = await this._getPatientContext();
         if (ctx.error) return null;
         const b = this.getById('bills', id);
@@ -2909,6 +3090,17 @@ const api = {
     },
 
     getMyReceipts: async function() {
+        if (this._backendConfig.modules.billing) {
+            const res = await this._request('billing/receipts.php', {
+                method: 'GET',
+                params: { my: 1 }
+            });
+            if (res.success && res.data && Array.isArray(res.data.receipts)) {
+                return res.data.receipts;
+            }
+            return [];
+        }
+
         const ctx = await this._getPatientContext();
         if (ctx.error) return [];
         const bills = this.getAll('bills').filter(b => b.patientId === ctx.patient.id);
@@ -2921,7 +3113,12 @@ const api = {
         const ctx = await this._getPatientContext(true);
         if (ctx.error) return { success: false, message: ctx.error };
 
-        const b = this.getById('bills', billId);
+        let b = null;
+        if (this._backendConfig.modules.billing) {
+            b = await this.getMyBillById(billId);
+        } else {
+            b = this.getById('bills', billId);
+        }
         if (!b || b.patientId !== ctx.patient.id) return { success: false, message: 'Bill not found.' };
 
         if (data.method === 'Credit/Debit Card') {
@@ -2950,6 +3147,22 @@ const api = {
     },
 
     requestPaymentPlan: async function(billId, months, reason) {
+        if (this._backendConfig.modules.billing) {
+            const res = await this._request('billing/plan.php', {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: { billId, months, reason }
+            });
+            if (res.success) {
+                return {
+                    success: true,
+                    message: res.message || 'Payment plan request submitted.',
+                    plan: res.data ? res.data.plan : null
+                };
+            }
+            return { success: false, message: res.message || 'Failed to submit payment plan request.' };
+        }
+
         const ctx = await this._getPatientContext(true);
         if (ctx.error) return { success: false, message: ctx.error };
         if (months < 2 || months > 12) return { success: false, message: 'Months must be between 2 and 12.' };
@@ -2969,8 +3182,14 @@ const api = {
     getMyInsuranceInfo: async function() {
         const ctx = await this._getPatientContext();
         if (ctx.error) return null;
-        const bills = this.getAll('bills').filter(b => b.patientId === ctx.patient.id && b.insuranceCoverage > 0);
-        return { provider: ctx.patient.insuranceProvider, number: ctx.patient.insuranceNumber, claims: bills.map(b => ({ billId: b.id, date: b.createdAt.split('T')[0], amount: b.insuranceCoverage })) };
+        let bills = [];
+        if (this._backendConfig.modules.billing) {
+            bills = await this.getMyBills();
+        } else {
+            bills = this.getAll('bills').filter(b => b.patientId === ctx.patient.id);
+        }
+        bills = (bills || []).filter(b => b.insuranceCoverage > 0);
+        return { provider: ctx.patient.insuranceProvider, number: ctx.patient.insuranceNumber, claims: bills.map(b => ({ billId: b.id, date: (b.createdAt || '').split('T')[0], amount: b.insuranceCoverage })) };
     },
 
     getMyTelehealthAppointments: async function() {
