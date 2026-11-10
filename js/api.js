@@ -40,7 +40,7 @@ const api = {
             labResults: true,     // Phase 5.10: Lab Results handled by PHP (api/lab-results/*.php)
             wards: false,
             billing: true,        // Phase 5.9: Billing & Payments handled by PHP (api/billing/*.php)
-            reports: false,
+            reports: true,        // Phase 5.11: Reports & Dashboard Analytics handled by PHP (api/reports/*.php)
             patientPortal: false
         }
     },
@@ -957,7 +957,44 @@ const api = {
     // ==========================================
     // 3. DASHBOARD & PUBLIC DATA
     // ==========================================
-   getStats: async function() {
+    _statsFetchPromise: null,
+    _statsCache: null,
+    _statsCacheTime: 0,
+
+    _fetchBackendStats: async function(days = 7) {
+        const now = Date.now();
+        if (this._statsCache && (now - this._statsCacheTime < 2000)) {
+            return this._statsCache;
+        }
+        if (this._statsFetchPromise) {
+            return this._statsFetchPromise;
+        }
+        this._statsFetchPromise = this._request('reports/stats.php', {
+            method: 'GET',
+            params: { days }
+        }).then(res => {
+            if (res.success && res.data) {
+                this._statsCache = res.data;
+                this._statsCacheTime = Date.now();
+                return res.data;
+            }
+            return null;
+        }).catch(err => {
+            console.error('Failed to fetch backend stats:', err);
+            return null;
+        }).finally(() => {
+            this._statsFetchPromise = null;
+        });
+        return this._statsFetchPromise;
+    },
+
+    getStats: async function() {
+        if (this._backendConfig.modules.reports) {
+            const data = await this._fetchBackendStats();
+            if (data && data.stats) {
+                return data.stats;
+            }
+        }
         const patients = await this._getPatientsListForMockJoin(); const doctors = await this._getDoctorsListForMockJoin();
         const appointments = await this._getAppointmentsListForMockJoin(); const bills = this.getAll('bills');
         const beds = this.getAll('beds'); const labs = await this._getLabResultsListForMockJoin();
@@ -999,6 +1036,12 @@ const api = {
         return patients.filter(p => p.status === 'pending').slice(0, limit);
     },
     getAppointmentsPerDay: async function(days = 7) {
+        if (this._backendConfig.modules.reports) {
+            const data = await this._fetchBackendStats(days);
+            if (data && Array.isArray(data.appointmentsPerDay)) {
+                return data.appointmentsPerDay;
+            }
+        }
         const appts = await this._getAppointmentsListForMockJoin(); const result = [];
         for (let i = days - 1; i >= 0; i--) {
             const d = new Date(); d.setDate(d.getDate() - i);
@@ -2404,6 +2447,12 @@ const api = {
         return beds;
     },
     getWardOccupancy: async function() {
+        if (this._backendConfig.modules.reports) {
+            const data = await this._fetchBackendStats();
+            if (data && Array.isArray(data.wardOccupancy)) {
+                return data.wardOccupancy;
+            }
+        }
         const wards = this.getAll('wards');
         const beds = this.getAll('beds');
         return wards.map(w => {
@@ -2865,6 +2914,33 @@ const api = {
         };
     },
     generateReport: async function(type, filters) {
+        if (this._backendConfig.modules.reports) {
+            const user = await this.getCurrentUser();
+            if (!user || user.role !== 'admin') {
+                return { success: false, message: 'Unauthorized. Only administrators can generate reports.' };
+            }
+            const res = await this._request('reports/generate.php', {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: { type, ...(filters || {}) }
+            });
+            if (res.success && res.data) {
+                return {
+                    success: true,
+                    message: res.message || 'Report generated successfully.',
+                    type: res.data.type || type,
+                    columns: res.data.columns || [],
+                    rows: res.data.rows || [],
+                    summary: res.data.summary || {},
+                    chartData: res.data.chartData || []
+                };
+            }
+            return {
+                success: false,
+                message: res.message || 'Failed to generate report.'
+            };
+        }
+
         const user = await this.getCurrentUser();
         if (!user || user.role !== 'admin') return { success: false, message: 'Unauthorized.' };
 
