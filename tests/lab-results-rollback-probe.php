@@ -1,64 +1,145 @@
 <?php
 /**
  * PrimeCare - CLI probe used by tests/lab-results-smoke-test.mjs
- * Phase 5.10.2: Proves transactional rollback integrity for lab results.
+ * Phase 5.10.2 (remediation H3): proves rollback through the REAL production writers.
  *
- * Usage: C:\xampp\php\php.exe tests/lab-results-rollback-probe.php
+ * Usage: C:\xampp\php\php.exe tests/lab-results-rollback-probe.php [orderedLabId]
+ *
+ * It calls createLabOrderRecord() / updateLabResultRecord() exactly as the API endpoints do, but
+ * passes a `$failureInjector` that throws INSIDE the real transaction (after every write, including
+ * the sequence allocation and audit log, and before commit). It then verifies that nothing leaked:
+ *
+ *  A. create  - no lab row, no sequence advance, no audit row, no open transaction
+ *  B. update  - the disposable Ordered record is byte-for-byte unchanged, no audit row
+ *  C. control - the same update with a NON-failing injector commits (proves A/B are real rollbacks)
+ *
+ * Scenarios B and C need a disposable `Ordered` lab record created by the smoke test (never a seed
+ * record); omit the argument to run scenario A only. Scenario C completes that disposable record.
  */
 
 declare(strict_types=1);
 
 require_once __DIR__ . '/../api/helpers/lab_results.php';
 
-$pdo  = getDatabaseConnection();
-$user = ['id' => 'U-001', 'username' => 'admin', 'fullName' => 'System Admin', 'role' => 'admin'];
+$labId = strtoupper((string) ($argv[1] ?? ''));
+if ($labId !== '' && (in_array($labId, ['LAB-001', 'LAB-002'], true) || preg_match('/^LAB-\d{3,}$/', $labId) !== 1)) {
+    echo json_encode(['error' => 'A disposable test record ID (never LAB-001 / LAB-002) is required.']);
+    exit(2);
+}
 
-// Count before
-$countBefore = (int) $pdo->query('SELECT COUNT(*) FROM lab_results')->fetchColumn();
-$seqBefore   = (int) $pdo->query("SELECT current_val FROM sequences WHERE entity_key = 'labResults'")->fetchColumn();
+$pdo   = getDatabaseConnection();
+$admin = ['id' => 'U-001', 'username' => 'admin', 'fullName' => 'System Admin', 'role' => 'admin'];
 
-$threw = false;
-$pdo->beginTransaction();
-try {
-    $labId = allocateNextId($pdo, 'labResults', 'lab_results', 'LAB', 3);
+$labIds = static function (PDO $pdo): array {
+    $ids = $pdo->query('SELECT id FROM lab_results ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
+    return array_map('strval', $ids);
+};
+$sequence = static fn(PDO $pdo): int => (int) $pdo->query("SELECT current_val FROM sequences WHERE entity_key = 'labResults'")->fetchColumn();
+$auditCount = static function (PDO $pdo, string $action): int {
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM audit_logs WHERE action = :a');
+    $stmt->execute([':a' => $action]);
+    return (int) $stmt->fetchColumn();
+};
+$labRow = static function (PDO $pdo, string $id): ?array {
+    $stmt = $pdo->prepare('SELECT * FROM lab_results WHERE id = :id');
+    $stmt->execute([':id' => $id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row === false ? null : $row;
+};
 
-    $insert = $pdo->prepare('
-        INSERT INTO lab_results (
-            id, patient_id, ordered_by, test_name, category,
-            status, result, unit, ref_range_min, ref_range_max,
-            flag, attachment_name, ordered_date, result_date,
-            performed_by, billed, bill_id
-        ) VALUES (
-            :id, "P-001", "D-001", "Rollback Test Lab", "Hematology",
-            "Ordered", NULL, NULL, NULL, NULL,
-            NULL, NULL, CURDATE(), NULL,
-            NULL, 0, NULL
-        )
-    ');
-    $insert->execute([':id' => $labId]);
+$out = [];
 
-    // Deliberate simulated mid-transaction failure
-    throw new RuntimeException('Simulated runtime failure before commit in lab rollback probe');
+// --- A. createLabOrderRecord with failure injected inside the real transaction ---------------------
+$idsBefore   = $labIds($pdo);
+$seqBefore   = $sequence($pdo);
+$auditBefore = $auditCount($pdo, 'Create Lab Order');
+$injectedA   = false;
+$seenStageA  = null;
+$seenIdA     = null;
 
-    $pdo->commit();
-} catch (Throwable $e) {
-    $threw = true;
-    if ($pdo->inTransaction()) {
-        $pdo->rollBack();
+$resA = createLabOrderRecord(
+    $pdo,
+    ['patientId' => 'P-001', 'testName' => 'ROLLBACK-PROBE create', 'category' => 'Hematology'],
+    $admin,
+    static function (string $stage, string $allocatedId) use (&$injectedA, &$seenStageA, &$seenIdA): void {
+        $injectedA  = true;
+        $seenStageA = $stage;
+        $seenIdA    = $allocatedId;
+        throw new RuntimeException('Injected failure inside createLabOrderRecord transaction');
     }
+);
+
+$out['create'] = [
+    'injectorRan'         => $injectedA,
+    'stage'               => $seenStageA,
+    'allocatedId'         => $seenIdA,
+    'ok'                  => $resA['ok'] ?? null,
+    'status'              => $resA['status'] ?? null,
+    'labIdsUnchanged'     => $idsBefore === $labIds($pdo),
+    'allocatedIdAbsent'   => $seenIdA !== null && !in_array($seenIdA, $labIds($pdo), true),
+    'sequenceUnchanged'   => $seqBefore === $sequence($pdo),
+    'auditUnchanged'      => $auditBefore === $auditCount($pdo, 'Create Lab Order'),
+    'inTransaction'       => $pdo->inTransaction(),
+];
+
+// --- B / C. updateLabResultRecord on a disposable Ordered record ----------------------------------
+if ($labId !== '') {
+    $before = $labRow($pdo, $labId);
+    if ($before === null || (string) $before['status'] !== 'Ordered') {
+        echo json_encode(['error' => "{$labId} must exist and be in 'Ordered' status for the update scenarios."]);
+        exit(2);
+    }
+
+    $payload = [
+        'id'             => $labId,
+        'result'         => '5.0',
+        'unit'           => 'mg/dL',
+        'referenceRange' => ['min' => '3', 'max' => '8'],
+    ];
+
+    $auditUpdBefore = $auditCount($pdo, 'Update Lab Result');
+    $injectedB      = false;
+
+    $resB = updateLabResultRecord(
+        $pdo,
+        $labId,
+        $payload,
+        $admin,
+        static function (string $stage, string $id) use (&$injectedB): void {
+            $injectedB = true;
+            throw new RuntimeException('Injected failure inside updateLabResultRecord transaction');
+        }
+    );
+
+    $afterB = $labRow($pdo, $labId);
+    $out['update'] = [
+        'injectorRan'     => $injectedB,
+        'ok'              => $resB['ok'] ?? null,
+        'status'          => $resB['status'] ?? null,
+        'rowUnchanged'    => $before == $afterB,
+        'stillOrdered'    => ($afterB['status'] ?? '') === 'Ordered' && array_key_exists('result', $afterB ?? []) && $afterB['result'] === null,
+        'auditUnchanged'  => $auditUpdBefore === $auditCount($pdo, 'Update Lab Result'),
+        'inTransaction'   => $pdo->inTransaction(),
+    ];
+
+    // Control: identical call with an injector that does NOT throw must commit.
+    $stageC = null;
+    $resC = updateLabResultRecord(
+        $pdo,
+        $labId,
+        $payload,
+        $admin,
+        static function (string $stage, string $id) use (&$stageC): void {
+            $stageC = $stage;
+        }
+    );
+    $afterC = $labRow($pdo, $labId);
+    $out['control'] = [
+        'injectorRan'   => $stageC !== null,
+        'ok'            => $resC['ok'] ?? null,
+        'completed'     => ($afterC['status'] ?? '') === 'Completed' && ($afterC['flag'] ?? '') === 'Normal',
+        'inTransaction' => $pdo->inTransaction(),
+    ];
 }
 
-$countAfter = (int) $pdo->query('SELECT COUNT(*) FROM lab_results')->fetchColumn();
-$inTxAfter  = $pdo->inTransaction();
-
-// Clean up sequence change caused by transaction rollback if needed
-if ($seqBefore > 0) {
-    $updSeq = $pdo->prepare("UPDATE sequences SET current_val = :val WHERE entity_key = 'labResults'");
-    $updSeq->execute([':val' => $seqBefore]);
-}
-
-echo json_encode([
-    'threw'        => $threw,
-    'inTxAfter'    => $inTxAfter,
-    'countMatches' => $countBefore === $countAfter,
-]);
+echo json_encode($out, JSON_UNESCAPED_SLASHES);

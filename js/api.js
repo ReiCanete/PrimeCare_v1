@@ -511,23 +511,59 @@ const api = {
     },
 
     /**
+     * Fetch EVERY page of lab-results/list.php (server caps a page at 100 rows).
+     * Resolves to an array of labs, or null when the request failed (e.g. 403 for the staff role).
+     */
+    _fetchAllLabResults: async function(params = {}) {
+        const all = [];
+        let page = 1;
+        let totalPages = 1;
+        do {
+            const res = await this._request('lab-results/list.php', {
+                method: 'GET',
+                params: { ...params, page, limit: 100 }
+            });
+            if (!res.success || !res.data || !Array.isArray(res.data.labs)) return null;
+            all.push(...res.data.labs);
+            totalPages = Number(res.data.totalPages) || 1;
+            page++;
+        } while (page <= totalPages && page <= 200);
+        return all;
+    },
+
+    /**
      * Helper used by unmigrated async consumers (reports, dashboard) to ensure lab results are fetched
      * from MySQL before aggregating.
+     *
+     * - Only admin / doctor / nurse may read the lab list; for any other role the server answers 403, so
+     *   no request is made and an empty list is returned (never stale localStorage clinical data).
+     * - Concurrent callers share ONE in-flight request. The promise is dropped as soon as it settles and
+     *   whenever a lab mutation succeeds (see _invalidateLabCache), so a stat read right after an
+     *   order / result entry can never receive an older snapshot.
      */
     _getLabResultsListForMockJoin: async function() {
         if (!this._backendConfig.modules.labResults) {
             return this.getAll('labResults');
         }
+        const user = await this.getCurrentUser();
+        if (!user || !['admin', 'doctor', 'nurse'].includes(user.role)) return [];
+
         if (!this._labsFetchPromise) {
-            this._labsFetchPromise = this.getLabResults({}).finally(() => {
-                setTimeout(() => { this._labsFetchPromise = null; }, 1500);
+            const inFlight = this.getLabResults({}).finally(() => {
+                if (this._labsFetchPromise === inFlight) this._labsFetchPromise = null;
             });
+            this._labsFetchPromise = inFlight;
         }
         try {
             const list = await this._labsFetchPromise;
             if (Array.isArray(list)) return list;
         } catch (e) {}
-        return this.getAll('labResults');
+        return [];
+    },
+
+    /** Drop any in-flight / memoised lab list so the next read hits the server. */
+    _invalidateLabCache: function() {
+        this._labsFetchPromise = null;
     },
 
     // ==========================================
@@ -923,7 +959,7 @@ const api = {
     // ==========================================
    getStats: async function() {
         const patients = await this._getPatientsListForMockJoin(); const doctors = await this._getDoctorsListForMockJoin();
-        const appointments = await this._getAppointmentsListForMockJoin(); const bills = await this._getBillsListForMockJoin();
+        const appointments = await this._getAppointmentsListForMockJoin(); const bills = this.getAll('bills');
         const beds = this.getAll('beds'); const labs = await this._getLabResultsListForMockJoin();
         const admissions = this.getAll('admissions');
         const todayStr = new Date().toLocaleDateString('en-CA');
@@ -2209,11 +2245,11 @@ const api = {
             if (safeFilters.keyword) params.keyword = safeFilters.keyword;
             if (safeFilters.dateFrom) params.dateFrom = safeFilters.dateFrom;
             if (safeFilters.dateTo) params.dateTo = safeFilters.dateTo;
-            const res = await this._request('lab-results/list.php', { method: 'GET', params });
-            if (res.success && res.data && Array.isArray(res.data.labs)) {
+            const labs = await this._fetchAllLabResults(params);
+            if (Array.isArray(labs)) {
                 const isUnfiltered = Object.keys(params).length === 0;
-                this._syncLabCache(res.data.labs, isUnfiltered ? { replaceAll: true } : {});
-                return res.data.labs;
+                this._syncLabCache(labs, isUnfiltered ? { replaceAll: true } : {});
+                return labs;
             }
             return [];
         }
@@ -2260,6 +2296,7 @@ const api = {
                 body: data
             });
             if (res.success && res.data && res.data.lab) {
+                this._invalidateLabCache();
                 this._syncLabCache(res.data.lab);
                 return {
                     success: true,
@@ -2296,6 +2333,7 @@ const api = {
                 body: { id, ...data }
             });
             if (res.success && res.data && res.data.lab) {
+                this._invalidateLabCache();
                 this._syncLabCache(res.data.lab);
                 const lab = res.data.lab;
                 this.createNotification(lab.patientId, 'lab', 'Lab Results Ready', `Your results for ${lab.testName} are now available.`, 'my-records.html?tab=labs');
@@ -3007,8 +3045,7 @@ const api = {
         } else {
             labs = this.getAll('labResults').filter(l => l.patientId === pid && l.status === 'Completed').sort((a, b) => b.resultDate.localeCompare(a.resultDate)).slice(0, 3);
         }
-        const allBills = await this._getBillsListForMockJoin();
-        const bills = allBills.filter(b => b.patientId === pid && (b.status === 'Unpaid' || b.status === 'Partial'));
+        const bills = this.getAll('bills').filter(b => b.patientId === pid && (b.status === 'Unpaid' || b.status === 'Partial'));
         const notifs = this.getAll('notifications').filter(n => n.patientId === pid).sort((a, b) => b.date.localeCompare(a.date));
 
         const nextAppt = appts.length > 0 ? { ...appts[0], doctorName: appts[0].doctorName || (await this.getDoctorById(appts[0].doctorId))?.name } : null;
@@ -3180,10 +3217,12 @@ const api = {
 
     getMyLabResults: async function() {
         if (this._backendConfig.modules.labResults) {
-            const res = await this._request('lab-results/list.php', { method: 'GET', params: { my: 1 } });
-            if (res.success && res.data && Array.isArray(res.data.labs)) {
-                this._syncLabCache(res.data.labs);
-                return res.data.labs
+            // Server scopes this to the authenticated patient (admin/doctor/nurse preview -> demo patient
+            // P-001). Staff are not permitted lab access (403) and simply get an empty list.
+            const labs = await this._fetchAllLabResults({ my: 1 });
+            if (Array.isArray(labs)) {
+                this._syncLabCache(labs);
+                return labs
                     .filter(l => l.status === 'Completed')
                     .sort((a, b) => (b.resultDate || b.orderedDate || '').localeCompare(a.resultDate || a.orderedDate || ''));
             }

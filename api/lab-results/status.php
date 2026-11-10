@@ -3,6 +3,9 @@
  * PrimeCare - POST /api/lab-results/status.php
  * Phase 5.10.2: Mark laboratory result as reviewed by physician.
  *
+ * Idempotent: the first review is recorded in audit_logs (the lab_results schema has no review
+ * columns); repeat calls return the original reviewer/time with data.review.alreadyReviewed = true.
+ *
  * Authorization:
  * - Admin, Doctor only.
  * - Nurse, Staff, Patient -> 403 Forbidden.
@@ -40,4 +43,7 @@ if (empty($result['ok'])) {
     sendError((string) $result['message'], (int) $result['status']);
 }
 
-sendSuccess((string) $result['message'], null);
+sendSuccess((string) $result['message'], [
+    'id'     => $id,
+    'review' => $result['review'] ?? null,
+]);
