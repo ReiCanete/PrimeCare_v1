@@ -240,7 +240,7 @@ window.viewLab = async function(id) {
     document.getElementById('v-performed').innerText = l.resultDate ? `${utils.formatDate(l.resultDate)} by ${l.performedBy}` : 'Pending';
 
     const user = await api.getCurrentUser();
-    if (user.role === 'doctor' && l.status === 'Completed') {
+    if ((user.role === 'doctor' || user.role === 'admin') && l.status === 'Completed') {
         document.getElementById('v-review-box').innerHTML = `<button class="btn btn-primary" onclick="markReviewed('${l.id}')">Mark as Reviewed</button>`;
     } else {
         document.getElementById('v-review-box').innerHTML = '';
@@ -249,7 +249,12 @@ window.viewLab = async function(id) {
     utils.openModal('view-modal');
 };
 
-window.markReviewed = function(id) {
+window.markReviewed = async function(id) {
+    const res = await api.markLabReviewed(id);
+    if (res && res.success === false) {
+        utils.showToast(res.message || 'Failed to mark lab result as reviewed.', 'danger');
+        return;
+    }
     utils.closeModal('view-modal');
-    utils.showToast('Lab result marked as reviewed.', 'success');
+    utils.showToast((res && res.message) || 'Lab result marked as reviewed.', 'success');
 };

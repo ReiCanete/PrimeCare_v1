@@ -37,6 +37,7 @@ const api = {
             clinical: false,
             medicalRecords: true, // Phase 5.7: EHR / medical records & vitals handled by PHP (api/medical-records/*.php)
             prescriptions: true,  // Phase 5.8: Prescriptions & pharmacy handled by PHP (api/prescriptions/*.php)
+            labResults: true,     // Phase 5.10: Lab Results handled by PHP (api/lab-results/*.php)
             wards: false,
             billing: true,        // Phase 5.9: Billing & Payments handled by PHP (api/billing/*.php)
             reports: false,
@@ -480,6 +481,55 @@ const api = {
         return this.getAll('bills');
     },
 
+    /**
+     * Keep in-memory / localStorage cache in sync for unmigrated modules (dashboard, reports).
+     */
+    _syncLabCache: function(labOrList, options = {}) {
+        try {
+            let current = this.getAll('labResults');
+            if (options.replaceAll && Array.isArray(labOrList)) {
+                localStorage.setItem('primecare_labResults', JSON.stringify(labOrList));
+                return;
+            }
+            if (options.deletedId) {
+                current = current.filter(l => l.id !== options.deletedId);
+            }
+            const items = Array.isArray(labOrList) ? labOrList : (labOrList ? [labOrList] : []);
+            items.forEach(item => {
+                if (!item || !item.id) return;
+                const idx = current.findIndex(l => l.id === item.id);
+                if (idx !== -1) {
+                    current[idx] = { ...current[idx], ...item };
+                } else {
+                    current.push(item);
+                }
+            });
+            localStorage.setItem('primecare_labResults', JSON.stringify(current));
+        } catch (e) {
+            // Ignore localStorage quota errors
+        }
+    },
+
+    /**
+     * Helper used by unmigrated async consumers (reports, dashboard) to ensure lab results are fetched
+     * from MySQL before aggregating.
+     */
+    _getLabResultsListForMockJoin: async function() {
+        if (!this._backendConfig.modules.labResults) {
+            return this.getAll('labResults');
+        }
+        if (!this._labsFetchPromise) {
+            this._labsFetchPromise = this.getLabResults({}).finally(() => {
+                setTimeout(() => { this._labsFetchPromise = null; }, 1500);
+            });
+        }
+        try {
+            const list = await this._labsFetchPromise;
+            if (Array.isArray(list)) return list;
+        } catch (e) {}
+        return this.getAll('labResults');
+    },
+
     // ==========================================
     // 0b. PHP AUTHENTICATION (Phase 5.2)
     // ==========================================
@@ -873,8 +923,8 @@ const api = {
     // ==========================================
    getStats: async function() {
         const patients = await this._getPatientsListForMockJoin(); const doctors = await this._getDoctorsListForMockJoin();
-        const appointments = await this._getAppointmentsListForMockJoin(); const bills = this.getAll('bills');
-        const beds = this.getAll('beds'); const labs = this.getAll('labResults');
+        const appointments = await this._getAppointmentsListForMockJoin(); const bills = await this._getBillsListForMockJoin();
+        const beds = this.getAll('beds'); const labs = await this._getLabResultsListForMockJoin();
         const admissions = this.getAll('admissions');
         const todayStr = new Date().toLocaleDateString('en-CA');
         
@@ -2147,31 +2197,82 @@ const api = {
         localStorage.setItem('primecare_prescriptions', JSON.stringify(rxs));
         return { success: true, message: `Prescription marked as ${status}.` };
     },
-    getLabResults: async function(filters) {
+    getLabResults: async function(filters = {}) {
+        const safeFilters = filters || {};
+        if (this._backendConfig.modules.labResults) {
+            const params = {};
+            if (safeFilters.patientId) params.patientId = safeFilters.patientId;
+            if (safeFilters.doctorId && safeFilters.doctorId !== 'All') params.doctorId = safeFilters.doctorId;
+            if (safeFilters.status && safeFilters.status !== 'All') params.status = safeFilters.status;
+            if (safeFilters.flag && safeFilters.flag !== 'All') params.flag = safeFilters.flag;
+            if (safeFilters.category && safeFilters.category !== 'All') params.category = safeFilters.category;
+            if (safeFilters.keyword) params.keyword = safeFilters.keyword;
+            if (safeFilters.dateFrom) params.dateFrom = safeFilters.dateFrom;
+            if (safeFilters.dateTo) params.dateTo = safeFilters.dateTo;
+            const res = await this._request('lab-results/list.php', { method: 'GET', params });
+            if (res.success && res.data && Array.isArray(res.data.labs)) {
+                const isUnfiltered = Object.keys(params).length === 0;
+                this._syncLabCache(res.data.labs, isUnfiltered ? { replaceAll: true } : {});
+                return res.data.labs;
+            }
+            return [];
+        }
+
         let labs = this.getAll('labResults');
         const patients = await this._getPatientsListForMockJoin();
 
-        if (filters.patientId) labs = labs.filter(l => l.patientId === filters.patientId);
-        if (filters.status && filters.status !== 'All') labs = labs.filter(l => l.status === filters.status);
-        if (filters.flag && filters.flag !== 'All') labs = labs.filter(l => l.flag === filters.flag);
-        if (filters.category && filters.category !== 'All') labs = labs.filter(l => l.category === filters.category);
-        if (filters.dateFrom) labs = labs.filter(l => l.orderedDate >= filters.dateFrom);
-        if (filters.dateTo) labs = labs.filter(l => l.orderedDate <= filters.dateTo);
+        if (safeFilters.patientId) labs = labs.filter(l => l.patientId === safeFilters.patientId);
+        if (safeFilters.status && safeFilters.status !== 'All') labs = labs.filter(l => l.status === safeFilters.status);
+        if (safeFilters.flag && safeFilters.flag !== 'All') labs = labs.filter(l => l.flag === safeFilters.flag);
+        if (safeFilters.category && safeFilters.category !== 'All') labs = labs.filter(l => l.category === safeFilters.category);
+        if (safeFilters.dateFrom) labs = labs.filter(l => l.orderedDate >= safeFilters.dateFrom);
+        if (safeFilters.dateTo) labs = labs.filter(l => l.orderedDate <= safeFilters.dateTo);
 
         labs = labs.map(l => {
             const p = patients.find(x => x.id === l.patientId);
             return { ...l, patientName: p ? p.fullName : 'Unknown' };
         });
 
-        if (filters.keyword) {
-            const kw = filters.keyword.toLowerCase();
+        if (safeFilters.keyword) {
+            const kw = safeFilters.keyword.toLowerCase();
             labs = labs.filter(l => l.id.toLowerCase().includes(kw) || l.patientName.toLowerCase().includes(kw) || l.testName.toLowerCase().includes(kw));
         }
         return labs.sort((a, b) => b.orderedDate.localeCompare(a.orderedDate));
     },
-    getLabResultById: async function(id) { return this.getById('labResults', id); },
+    getLabResultById: async function(id) {
+        if (this._backendConfig.modules.labResults) {
+            const res = await this._request('lab-results/get.php', { method: 'GET', params: { id } });
+            if (res.success && res.data && res.data.lab) {
+                this._syncLabCache(res.data.lab);
+                return res.data.lab;
+            }
+            return null;
+        }
+        return this.getById('labResults', id);
+    },
     getCriticalLabResults: async function(limit = 5) { return (await this.getLabResults({ flag: 'Critical' })).slice(0, limit); },
     orderLabTest: async function(data) {
+        if (this._backendConfig.modules.labResults) {
+            const csrf = await this._csrfHeaders();
+            const res = await this._request('lab-results/create.php', {
+                method: 'POST',
+                headers: { ...csrf },
+                body: data
+            });
+            if (res.success && res.data && res.data.lab) {
+                this._syncLabCache(res.data.lab);
+                return {
+                    success: true,
+                    message: res.message || 'Lab test ordered successfully.',
+                    lab: res.data.lab
+                };
+            }
+            return {
+                success: false,
+                message: res.message || 'Failed to order lab test.'
+            };
+        }
+
         const user = await this.getCurrentUser();
         if (!user || (user.role !== 'doctor' && user.role !== 'admin')) return { success: false, message: 'Unauthorized.' };
         
@@ -2187,6 +2288,29 @@ const api = {
         return { success: true, message: 'Lab test ordered successfully.', lab: saved };
     },
     saveLabResult: async function(id, data) {
+        if (this._backendConfig.modules.labResults) {
+            const csrf = await this._csrfHeaders();
+            const res = await this._request('lab-results/update.php', {
+                method: 'POST',
+                headers: { ...csrf },
+                body: { id, ...data }
+            });
+            if (res.success && res.data && res.data.lab) {
+                this._syncLabCache(res.data.lab);
+                const lab = res.data.lab;
+                this.createNotification(lab.patientId, 'lab', 'Lab Results Ready', `Your results for ${lab.testName} are now available.`, 'my-records.html?tab=labs');
+                return {
+                    success: true,
+                    message: res.message || 'Lab result saved successfully.',
+                    lab: lab
+                };
+            }
+            return {
+                success: false,
+                message: res.message || 'Failed to save lab result.'
+            };
+        }
+
         const user = await this.getCurrentUser();
         if (!user || (user.role !== 'nurse' && user.role !== 'doctor' && user.role !== 'admin')) return { success: false, message: 'Unauthorized.' };
 
@@ -2211,6 +2335,28 @@ const api = {
         
         this.createNotification(labs[idx].patientId, 'lab', 'Lab Results Ready', `Your results for ${labs[idx].testName} are now available.`, 'my-records.html?tab=labs');
         return { success: true, message: 'Lab result saved successfully.' };
+    },
+    markLabReviewed: async function(id) {
+        if (this._backendConfig.modules.labResults) {
+            const csrf = await this._csrfHeaders();
+            const res = await this._request('lab-results/status.php', {
+                method: 'POST',
+                headers: { ...csrf },
+                body: { id, action: 'review' }
+            });
+            if (res.success) {
+                return {
+                    success: true,
+                    message: res.message || 'Lab result marked as reviewed successfully.'
+                };
+            }
+            return {
+                success: false,
+                message: res.message || 'Failed to mark lab result as reviewed.'
+            };
+        }
+        this.logActivity('Review Lab Result', `Reviewed lab result ${id}`);
+        return { success: true, message: 'Lab result marked as reviewed successfully.' };
     },
     getWards: async function() { return this.getAll('wards'); },
     getBeds: async function(filters) {
@@ -2767,7 +2913,8 @@ const api = {
         }
         else if (type === 'lab-summary') {
             columns = ['Category', 'Test Name', 'Normal', 'Abnormal', 'Critical', 'Total'];
-            const labs = this.getAll('labResults').filter(l => l.orderedDate >= dateFrom && l.orderedDate <= dateTo && l.status === 'Completed');
+            const allLabs = await this._getLabResultsListForMockJoin();
+            const labs = allLabs.filter(l => l.orderedDate >= dateFrom && l.orderedDate <= dateTo && l.status === 'Completed');
             let grouped = {};
             labs.forEach(l => {
                 const key = `${l.category}|${l.testName}`;
@@ -2853,8 +3000,15 @@ const api = {
             appts = this.getAll('appointments').filter(a => a.patientId === pid && a.date >= todayStr && a.status !== 'Cancelled' && a.status !== 'Completed').sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
         }
 
-        const labs = this.getAll('labResults').filter(l => l.patientId === pid && l.status === 'Completed').sort((a, b) => b.resultDate.localeCompare(a.resultDate)).slice(0, 3);
-        const bills = this.getAll('bills').filter(b => b.patientId === pid && (b.status === 'Unpaid' || b.status === 'Partial'));
+        let labs = [];
+        if (this._backendConfig.modules.labResults) {
+            const myLabs = await this.getMyLabResults();
+            labs = myLabs.slice(0, 3);
+        } else {
+            labs = this.getAll('labResults').filter(l => l.patientId === pid && l.status === 'Completed').sort((a, b) => b.resultDate.localeCompare(a.resultDate)).slice(0, 3);
+        }
+        const allBills = await this._getBillsListForMockJoin();
+        const bills = allBills.filter(b => b.patientId === pid && (b.status === 'Unpaid' || b.status === 'Partial'));
         const notifs = this.getAll('notifications').filter(n => n.patientId === pid).sort((a, b) => b.date.localeCompare(a.date));
 
         const nextAppt = appts.length > 0 ? { ...appts[0], doctorName: appts[0].doctorName || (await this.getDoctorById(appts[0].doctorId))?.name } : null;
@@ -3025,6 +3179,16 @@ const api = {
     },
 
     getMyLabResults: async function() {
+        if (this._backendConfig.modules.labResults) {
+            const res = await this._request('lab-results/list.php', { method: 'GET', params: { my: 1 } });
+            if (res.success && res.data && Array.isArray(res.data.labs)) {
+                this._syncLabCache(res.data.labs);
+                return res.data.labs
+                    .filter(l => l.status === 'Completed')
+                    .sort((a, b) => (b.resultDate || b.orderedDate || '').localeCompare(a.resultDate || a.orderedDate || ''));
+            }
+            return [];
+        }
         const ctx = await this._getPatientContext();
         if (ctx.error) return [];
         return this.getAll('labResults').filter(l => l.patientId === ctx.patient.id && l.status === 'Completed').sort((a, b) => b.resultDate.localeCompare(a.resultDate));
