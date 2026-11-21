@@ -317,25 +317,48 @@ async function runTests() {
             `D-003 on Sunday (${nextSun}) returns 0 slots (off day)`
         );
 
-        // D-002 on 2026-11-04 (has seeded A-002 at 10:00)
+        // D-002 on a dynamically future-dated Wednesday (temp booking at 10:00)
+        const slotTestDate = getNextWeekday(3, 12);
+        const tempSlotAppt = await staff.request('appointments/create.php', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': staff.csrfToken },
+            body: {
+                patientId: 'P-001',
+                doctorId: 'D-002',
+                date: slotTestDate,
+                time: '10:00',
+                type: 'in-person',
+                reason: 'Temporary slot availability verification'
+            }
+        });
+        const tempSlotApptId = tempSlotAppt.body?.data?.appointment?.id;
+        assert(
+            tempSlotAppt.status === 201 && Boolean(tempSlotApptId),
+            `Created temporary future appointment on ${slotTestDate} at 10:00 for slot test`
+        );
+
         const d002WedSlots = await staff.request('appointments/slots.php', {
-            params: { doctorId: 'D-002', date: '2026-11-04' }
+            params: { doctorId: 'D-002', date: slotTestDate }
         });
         const slot1000 = (d002WedSlots.body?.data?.slots || []).find(s => s.time === '10:00');
         assert(
             d002WedSlots.status === 200 && slot1000 && slot1000.available === false,
-            'D-002 slot 10:00 on 2026-11-04 is marked available=false due to seeded A-002'
+            `D-002 slot 10:00 on ${slotTestDate} is marked available=false due to booked appointment`
         );
 
-        // Exclude A-002 when rescheduling A-002 on the same date
+        // Exclude temporary appointment when rescheduling on the same date
         const d002WedExclude = await staff.request('appointments/slots.php', {
-            params: { doctorId: 'D-002', date: '2026-11-04', excludeId: 'A-002' }
+            params: { doctorId: 'D-002', date: slotTestDate, excludeId: tempSlotApptId }
         });
         const slot1000Excl = (d002WedExclude.body?.data?.slots || []).find(s => s.time === '10:00');
         assert(
             d002WedExclude.status === 200 && slot1000Excl && slot1000Excl.available === true,
-            'D-002 slot 10:00 on 2026-11-04 is marked available=true when excludeId=A-002 is passed'
+            `D-002 slot 10:00 on ${slotTestDate} is marked available=true when excludeId=${tempSlotApptId} is passed`
         );
+
+        if (tempSlotApptId) {
+            runSql(`DELETE FROM appointments WHERE id = '${tempSlotApptId}'; UPDATE sequences SET current_val = 2 WHERE entity_key = 'appointments';`);
+        }
 
         // ------------------------------------------------------------------
         // 5. Booking Validation: Past, Off-Schedule, Off-Grid, Inactive Doctor, Unverified Patient

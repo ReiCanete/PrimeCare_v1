@@ -50,14 +50,14 @@ async function renderAppointments() {
         const isWindowOpen = diffMins <= 15 && diffMins >= -30;
 
         let action;
-        if (isConfirmed && hasForm && isWindowOpen) {
-            action = `<button class="btn btn-primary" onclick="joinCall('${a.id}')">Join Call</button>`;
+        if (isConfirmed && hasForm) {
+            action = `<button class="btn btn-outline" disabled title="External video link provided directly by clinic">External Video Link Required</button>
+                      <div class="th-reason">In-app video streaming is unavailable. Check with the clinic for your link.</div>`;
         } else {
-            let reason = 'Join window opens 15 mins before';
+            let reason = 'Complete pre-visit form after confirmation';
             if (!isConfirmed) reason = 'Waiting for staff confirmation';
             else if (!hasForm) reason = 'Pre-visit form required';
-            else if (diffMins < -30) reason = 'Appointment missed';
-            action = `<button class="btn btn-outline" disabled title="${utils.escapeHTML(reason)}">Join Call 🔒</button>
+            action = `<button class="btn btn-outline" disabled title="${utils.escapeHTML(reason)}">Video Unavailable 🔒</button>
                       <div class="th-reason">${utils.escapeHTML(reason)}</div>`;
         }
 
@@ -122,148 +122,18 @@ window.submitPreVisit = async function () {
     }
 };
 
-window.joinCall = async function (apptId) {
-    const check = await api.canJoinTelehealth(apptId);
-    if (!check.allowed) return utils.showAlert('alert-container', 'danger', check.reason);
-
-    const appt = (await api.getMyTelehealthAppointments()).find(a => a.id === apptId);
-    currentDoctorName = utils.formatDoctorName(appt ? appt.doctorName : 'Unknown');
-
-    $('lobby-view').style.display = 'none';
-    $('call-view').style.display = 'block';
-    $('call-doc-name').innerText = currentDoctorName;
-    $('call-timer').innerText = '00:00';
-
-    startWaitingRoom();
+window.joinCall = async function () {
+    utils.showAlert(
+        'alert-container',
+        'info',
+        'In-app video consultations are unavailable in this environment. Your confirmed clinic video link will be sent directly by staff.'
+    );
 };
 
-async function startWaitingRoom() {
-    const waiting = $('waiting-msg');
-    const remote = $('doctor-video');
-
-    waiting.style.display = 'flex';
-    remote.style.display = 'none';
-    remote.innerHTML = '';
-    $('chat-messages').innerHTML = '<div class="chat-note">Chat started</div>';
-    $('chat-panel').classList.remove('open');
-
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        $('local-video').srcObject = localStream;
-        $('no-cam-msg').style.display = 'none';
-    } catch (err) {
-        console.warn('Camera access denied or unavailable:', err);
-        $('no-cam-msg').style.display = 'block';
-    }
-
-    clearTimeout(connectTimeout);
-    connectTimeout = setTimeout(() => {
-        if ($('call-view').style.display !== 'block') return;
-        waiting.style.display = 'none';
-        remote.innerHTML = `
-            <div class="remote-avatar">${ICONS.doctors}</div>
-            <h2>${utils.escapeHTML(currentDoctorName)}</h2>
-            <p>Connected</p>`;
-        remote.style.display = 'block';
-        startTimer();
-    }, 8000);
-}
-
-function startTimer() {
-    clearInterval(timerInterval);
-    callSeconds = 0;
-    timerInterval = setInterval(() => {
-        callSeconds++;
-        const m = String(Math.floor(callSeconds / 60)).padStart(2, '0');
-        const s = String(callSeconds % 60).padStart(2, '0');
-        $('call-timer').innerText = `${m}:${s}`;
-    }, 1000);
-}
-
-window.toggleMic = function () {
-    const btn = $('btn-mic');
-    if (localStream && localStream.getAudioTracks().length > 0) {
-        const track = localStream.getAudioTracks()[0];
-        track.enabled = !track.enabled;
-        btn.innerText = track.enabled ? '🎤' : '🔇';
-        btn.className = track.enabled ? 'control-btn normal' : 'control-btn danger';
-    }
-};
-
-window.toggleCam = function () {
-    const btn = $('btn-cam');
-    if (localStream && localStream.getVideoTracks().length > 0) {
-        const track = localStream.getVideoTracks()[0];
-        track.enabled = !track.enabled;
-        btn.innerText = track.enabled ? '📷' : '🚫';
-        btn.className = track.enabled ? 'control-btn normal' : 'control-btn danger';
-    }
-};
-
-window.endCall = function () {
-    clearInterval(timerInterval);
-    clearTimeout(connectTimeout);
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-        $('local-video').srcObject = null;
-    }
-
-    // reset control buttons for the next call
-    $('btn-mic').innerText = '🎤'; $('btn-mic').className = 'control-btn normal';
-    $('btn-cam').innerText = '📷'; $('btn-cam').className = 'control-btn normal';
-
-    $('call-view').style.display = 'none';
-    $('lobby-view').style.display = 'block';
-
-    setStars(0);
-    $('fb-comment').value = '';
-    utils.openModal('feedback-modal');
-};
-
-window.toggleChat = function () {
-    $('chat-panel').classList.toggle('open');
-};
-
-function addChatMessage(kind, who, text) {
-    const box = $('chat-messages');
-    const div = document.createElement('div');
-    div.className = `chat-msg ${kind}`;
-    div.innerHTML = `<strong>${who}:</strong> ${utils.escapeHTML(text)}`;
-    box.appendChild(div);
-    box.scrollTop = box.scrollHeight;
-}
-
-window.sendChat = function () {
-    const input = $('chat-input');
-    const msg = input.value.trim();
-    if (!msg) return;
-
-    addChatMessage('me', 'You', msg);
-    input.value = '';
-
-    setTimeout(() => {
-        if ($('call-view').style.display === 'block') {
-            receiveChat("I understand. Let's discuss that.");
-        }
-    }, 3000);
-};
-
-function receiveChat(msg) {
-    addChatMessage('doctor', 'Doctor', msg);
-    if (!$('chat-panel').classList.contains('open')) toggleChat();
-}
-
-window.setStars = function (num) {
-    rating = num;
-    const spans = $('star-rating').children;
-    for (let i = 0; i < 5; i++) {
-        spans[i].innerText = i < num ? '★' : '☆';
-        spans[i].style.color = i < num ? 'var(--color-warning)' : 'var(--color-text-muted)';
-    }
-};
-
-window.submitFeedback = function () {
-    utils.closeModal('feedback-modal');
-    utils.showToast('Thank you for your feedback!', 'success');
-};
+window.toggleMic = function () {};
+window.toggleCam = function () {};
+window.endCall = function () {};
+window.toggleChat = function () {};
+window.sendChat = function () {};
+window.setStars = function () {};
+window.submitFeedback = function () {};

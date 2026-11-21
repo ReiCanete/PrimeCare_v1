@@ -29,7 +29,7 @@ const api = {
         // `false` so unmigrated modules keep running on localStorage mock data unchanged.
         modules: {
             auth: true,     // Phase 5.2: login/logout/session handled by PHP (api.auth.*)
-            users: false,
+            users: true,    // User Management & audit logs handled by PHP (api/users/*.php)
             publicData: false,
             patients: true, // Phase 5.3: patient management & self-registration handled by PHP (api/patients/*.php)
             doctors: true,  // Phase 5.5: doctor management, departments & scheduling handled by PHP (api/doctors/*.php)
@@ -38,7 +38,7 @@ const api = {
             medicalRecords: true, // Phase 5.7: EHR / medical records & vitals handled by PHP (api/medical-records/*.php)
             prescriptions: true,  // Phase 5.8: Prescriptions & pharmacy handled by PHP (api/prescriptions/*.php)
             labResults: true,     // Phase 5.10: Lab Results handled by PHP (api/lab-results/*.php)
-            wards: false,
+            wards: true,          // Wards, beds & inpatient admissions handled by PHP (api/wards/*.php)
             billing: true,        // Phase 5.9: Billing & Payments handled by PHP (api/billing/*.php)
             reports: true,        // Phase 5.11: Reports & Dashboard Analytics handled by PHP (api/reports/*.php)
             patientPortal: false
@@ -825,7 +825,18 @@ const api = {
         this.logActivity('Change Password', 'User changed their own password.');
         return { success: true, message: 'Password updated successfully.' };
     },
-    getUsers: async function(filters) {
+    getUsers: async function(filters = {}) {
+        if (this._backendConfig.modules.users) {
+            const res = await this._request('users/list.php', {
+                method: 'GET',
+                params: {
+                    role: filters?.role,
+                    status: filters?.status,
+                    keyword: filters?.keyword
+                }
+            });
+            return (res.success && res.data && Array.isArray(res.data.users)) ? res.data.users : [];
+        }
         let users = this.getAll('users');
         if (filters.role && filters.role !== 'All') users = users.filter(u => u.role === filters.role);
         if (filters.status && filters.status !== 'All') users = users.filter(u => u.status === filters.status);
@@ -835,8 +846,30 @@ const api = {
         }
         return users.sort((a, b) => a.fullName.localeCompare(b.fullName));
     },
-    getUserById: async function(id) { return this.getById('users', id); },
+    getUserById: async function(id) {
+        if (this._backendConfig.modules.users) {
+            const res = await this._request('users/get.php', { method: 'GET', params: { id } });
+            return (res.success && res.data && res.data.user) ? res.data.user : null;
+        }
+        return this.getById('users', id);
+    },
     saveUser: async function(data) {
+        if (this._backendConfig.modules.users) {
+            const res = await this._request('users/save.php', {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: data
+            });
+            if (res.success) {
+                this._doctorsFetchPromise = null;
+            }
+            return {
+                success: res.success,
+                message: res.message || (res.success ? 'User saved successfully.' : 'Failed to save user.'),
+                user: res.data?.user || null,
+                tempPassword: res.data?.tempPassword || null
+            };
+        }
         const currentUser = await this.getCurrentUser();
         if (!currentUser || currentUser.role !== 'admin') return { success: false, message: 'Unauthorized.' };
         
@@ -894,6 +927,14 @@ const api = {
         return { success: true, message: 'User saved successfully.', tempPassword: tempPw };
     },
     setUserStatus: async function(id, status) {
+        if (this._backendConfig.modules.users) {
+            const res = await this._request('users/status.php', {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: { id, status }
+            });
+            return { success: res.success, message: res.message };
+        }
         const currentUser = await this.getCurrentUser();
         if (currentUser.id === id) return { success: false, message: 'You cannot deactivate your own account.' };
         let users = this.getAll('users');
@@ -907,6 +948,14 @@ const api = {
         return { success: true, message: `User status set to ${status}.` };
     },
     changeUserRole: async function(id, role) {
+        if (this._backendConfig.modules.users) {
+            const res = await this._request('users/role.php', {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: { id, role }
+            });
+            return { success: res.success, message: res.message };
+        }
         const currentUser = await this.getCurrentUser();
         if (currentUser.id === id) return { success: false, message: 'You cannot change your own role.' };
         let users = this.getAll('users');
@@ -920,6 +969,18 @@ const api = {
         return { success: true, message: `User role changed to ${role}.` };
     },
     resetUserPassword: async function(id) {
+        if (this._backendConfig.modules.users) {
+            const res = await this._request('users/reset-password.php', {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: { id }
+            });
+            return {
+                success: res.success,
+                message: res.message,
+                tempPassword: res.data?.tempPassword || null
+            };
+        }
         const currentUser = await this.getCurrentUser();
         if (currentUser.role !== 'admin') return { success: false, message: 'Unauthorized.' };
         let users = this.getAll('users');
@@ -932,6 +993,14 @@ const api = {
         return { success: true, message: 'Password reset successfully.', tempPassword: tempPw };
     },
     deleteUser: async function(id) {
+        if (this._backendConfig.modules.users) {
+            const res = await this._request('users/delete.php', {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: { id }
+            });
+            return { success: res.success, message: res.message };
+        }
         const currentUser = await this.getCurrentUser();
         if (currentUser.id === id) return { success: false, message: 'You cannot delete yourself.' };
         const allAppts = await this._getAppointmentsListForMockJoin();
@@ -942,7 +1011,19 @@ const api = {
         this.logActivity('Delete User', `Deleted user ${id}`);
         return { success: true, message: 'User deleted.' };
     },
-    getAuditLog: async function(filters) {
+    getAuditLog: async function(filters = {}) {
+        if (this._backendConfig.modules.users) {
+            const res = await this._request('users/audit-logs.php', {
+                method: 'GET',
+                params: {
+                    userId: filters?.userId,
+                    dateFrom: filters?.dateFrom,
+                    dateTo: filters?.dateTo,
+                    keyword: filters?.keyword
+                }
+            });
+            return (res.success && res.data && Array.isArray(res.data.logs)) ? res.data.logs : [];
+        }
         let logs = this.getAll('auditLog');
         if (filters.userId) logs = logs.filter(l => l.userId === filters.userId);
         if (filters.dateFrom) logs = logs.filter(l => l.timestamp.split('T')[0] >= filters.dateFrom);
@@ -2438,8 +2519,21 @@ const api = {
         this.logActivity('Review Lab Result', `Reviewed lab result ${id}`);
         return { success: true, message: 'Lab result marked as reviewed successfully.' };
     },
-    getWards: async function() { return this.getAll('wards'); },
+    getWards: async function() {
+        if (this._backendConfig.modules.wards) {
+            const res = await this._request('wards/list.php', { method: 'GET' });
+            return (res.success && res.data && Array.isArray(res.data.wards)) ? res.data.wards : [];
+        }
+        return this.getAll('wards');
+    },
     getBeds: async function(filters) {
+        if (this._backendConfig.modules.wards) {
+            const res = await this._request('wards/beds.php', {
+                method: 'GET',
+                params: { wardId: filters?.wardId, status: filters?.status }
+            });
+            return (res.success && res.data && Array.isArray(res.data.beds)) ? res.data.beds : [];
+        }
         let beds = this.getAll('beds');
         if (filters && filters.wardId && filters.wardId !== 'All') beds = beds.filter(b => b.wardId === filters.wardId);
         if (filters && filters.status && filters.status !== 'All') beds = beds.filter(b => b.status === filters.status);
@@ -2460,6 +2554,13 @@ const api = {
         });
     },
     getAdmissions: async function(filters) {
+        if (this._backendConfig.modules.wards) {
+            const res = await this._request('wards/admissions.php', {
+                method: 'GET',
+                params: { status: filters?.status, patientId: filters?.patientId }
+            });
+            return (res.success && res.data && Array.isArray(res.data.admissions)) ? res.data.admissions : [];
+        }
         let adms = this.getAll('admissions');
         const patients = await this._getPatientsListForMockJoin();
         const doctors = await this._getDoctorsListForMockJoin();
@@ -2480,6 +2581,18 @@ const api = {
         }).sort((a, b) => b.admitDate.localeCompare(a.admitDate));
     },
     admitPatient: async function(data) {
+        if (this._backendConfig.modules.wards) {
+            const res = await this._request('wards/admit.php', {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: data
+            });
+            if (res.success) {
+                this._statsCache = null;
+                this._patientsFetchPromise = null;
+            }
+            return { success: res.success, message: res.message, admission: res.data?.admission || null };
+        }
         const user = await this.getCurrentUser();
         if (!user || (user.role !== 'admin' && user.role !== 'nurse')) return { success: false, message: 'Unauthorized.' };
 
@@ -2510,6 +2623,18 @@ const api = {
         return { success: true, message: 'Patient admitted successfully.' };
     },
     transferPatient: async function(admissionId, newBedId) {
+        if (this._backendConfig.modules.wards) {
+            const res = await this._request('wards/transfer.php', {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: { admissionId, newBedId }
+            });
+            if (res.success) {
+                this._statsCache = null;
+                this._patientsFetchPromise = null;
+            }
+            return { success: res.success, message: res.message, admission: res.data?.admission || null };
+        }
         const user = await this.getCurrentUser();
         if (!user || (user.role !== 'admin' && user.role !== 'nurse')) return { success: false, message: 'Unauthorized.' };
 
@@ -2538,6 +2663,18 @@ const api = {
         return { success: true, message: 'Patient transferred successfully.' };
     },
     dischargePatient: async function(admissionId, summary) {
+        if (this._backendConfig.modules.wards) {
+            const res = await this._request('wards/discharge.php', {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: { admissionId, summary }
+            });
+            if (res.success) {
+                this._statsCache = null;
+                this._patientsFetchPromise = null;
+            }
+            return { success: res.success, message: res.message, admission: res.data?.admission || null };
+        }
         const user = await this.getCurrentUser();
         if (!user || (user.role !== 'admin' && user.role !== 'nurse' && user.role !== 'doctor')) return { success: false, message: 'Unauthorized.' };
         if (!summary || summary.length < 10) return { success: false, message: 'Discharge summary must be at least 10 characters.' };
@@ -2564,6 +2701,17 @@ const api = {
         return { success: true, message: 'Patient discharged successfully.' };
     },
     setBedStatus: async function(bedId, status) {
+        if (this._backendConfig.modules.wards) {
+            const res = await this._request('wards/bed-status.php', {
+                method: 'POST',
+                headers: await this._csrfHeaders(),
+                body: { bedId, status }
+            });
+            if (res.success) {
+                this._statsCache = null;
+            }
+            return { success: res.success, message: res.message, bed: res.data?.bed || null };
+        }
         const user = await this.getCurrentUser();
         if (!user || (user.role !== 'admin' && user.role !== 'nurse')) return { success: false, message: 'Unauthorized.' };
         if (status !== 'Available' && status !== 'Maintenance') return { success: false, message: 'Invalid status.' };
@@ -3313,6 +3461,10 @@ const api = {
     },
 
     getMyAdmissions: async function() {
+        if (this._backendConfig.modules.wards) {
+            const res = await this._request('wards/admissions.php', { method: 'GET' });
+            return (res.success && res.data && Array.isArray(res.data.admissions)) ? res.data.admissions : [];
+        }
         const ctx = await this._getPatientContext();
         if (ctx.error) return [];
         const doctors = await this._getDoctorsListForMockJoin();

@@ -6,7 +6,7 @@ document.documentElement.setAttribute('data-theme', savedTheme);
 
 const FEATURES = {
     roleSimulator: false,
-    notifications: true,
+    notifications: false,
     telehealth: true,
     wards: true,
     labs: true,

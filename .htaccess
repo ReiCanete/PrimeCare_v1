@@ -12,7 +12,7 @@ Options -Indexes
     Require all denied
 </FilesMatch>
 
-<FilesMatch "^(\.env(\..*)?|\.gitignore|\.htaccess|config\.local\.php|config\.example\.php)$">
+<FilesMatch "^(\.env(\..*)?|\.gitignore|\.htaccess|config\..*\.php)$">
     Require all denied
 </FilesMatch>
 
