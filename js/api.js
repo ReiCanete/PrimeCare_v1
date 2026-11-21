@@ -994,6 +994,7 @@ const api = {
             if (data && data.stats) {
                 return data.stats;
             }
+            throw new Error('Unable to load live hospital statistics from the server.');
         }
         const patients = await this._getPatientsListForMockJoin(); const doctors = await this._getDoctorsListForMockJoin();
         const appointments = await this._getAppointmentsListForMockJoin(); const bills = this.getAll('bills');
@@ -1038,9 +1039,7 @@ const api = {
     getAppointmentsPerDay: async function(days = 7) {
         if (this._backendConfig.modules.reports) {
             const data = await this._fetchBackendStats(days);
-            if (data && Array.isArray(data.appointmentsPerDay)) {
-                return data.appointmentsPerDay;
-            }
+            return (data && Array.isArray(data.appointmentsPerDay)) ? data.appointmentsPerDay : [];
         }
         const appts = await this._getAppointmentsListForMockJoin(); const result = [];
         for (let i = days - 1; i >= 0; i--) {
@@ -2449,9 +2448,7 @@ const api = {
     getWardOccupancy: async function() {
         if (this._backendConfig.modules.reports) {
             const data = await this._fetchBackendStats();
-            if (data && Array.isArray(data.wardOccupancy)) {
-                return data.wardOccupancy;
-            }
+            return (data && Array.isArray(data.wardOccupancy)) ? data.wardOccupancy : [];
         }
         const wards = this.getAll('wards');
         const beds = this.getAll('beds');

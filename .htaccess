@@ -1,0 +1,26 @@
+# PrimeCare Production Security & Access Control (.htaccess)
+Options -Indexes
+
+# Block direct HTTP access to internal folders (database dumps, tests, git metadata)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(database|tests|\.git)(/|$) - [F,L]
+</IfModule>
+
+# Block direct HTTP access to SQL, Markdown docs, logs, env files, and local config
+<FilesMatch "\.(sql|md|log|bak|old|orig|tmp|yml|yaml|ini|sh|mjs)$">
+    Require all denied
+</FilesMatch>
+
+<FilesMatch "^(\.env(\..*)?|\.gitignore|\.htaccess|config\.local\.php|config\.example\.php)$">
+    Require all denied
+</FilesMatch>
+
+# Baseline HTTP Security Headers
+<IfModule mod_headers.c>
+    Header unset X-Content-Type-Options
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+</IfModule>

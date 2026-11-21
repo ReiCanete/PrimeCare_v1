@@ -33,17 +33,6 @@ async function initLogin() {
         toggle.innerText = type === 'password' ? '👁️' : '🙈';
     });
 
-    // Demo credentials quick-fill helper
-    document.querySelectorAll('.demo-box li[data-username]').forEach(item => {
-        item.addEventListener('click', () => {
-            const u = item.getAttribute('data-username');
-            const p = item.getAttribute('data-password');
-            const userInput = document.getElementById('username');
-            if (userInput && u) userInput.value = u;
-            if (passInput && p) passInput.value = p;
-        });
-    });
-
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         if (submitting) return; // prevent duplicate submissions
@@ -174,11 +163,11 @@ async function nextStep(step) {
         if (mobileTaken) return showFieldError('mobile', 'Mobile already registered.');
         if (idTaken) return showFieldError('idNumber', 'ID already registered.');
         
-        // Send Demo Code
+        // Generate verification code for registration confirmation step
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = Date.now() + (5 * 60 * 1000); // 5 mins
         sessionStorage.setItem('primecare_verification', JSON.stringify({ code, expiry, target: regData.mobile }));
-        document.getElementById('demo-code-display').innerText = code;
+        document.getElementById('verification-code-display').innerText = code;
     }
 
     document.getElementById(`step${step}`).classList.remove('active');
@@ -274,61 +263,9 @@ async function verifyAndRegister() {
 }
 
 // --- FORGOT PASSWORD ---
-let resetTarget = '';
 function initForgot() {
-    document.getElementById('forgot-step1-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const u = document.getElementById('f-username').value;
-        const em = document.getElementById('f-email').value;
-        
-        const users = api.getAll('users');
-        const user = users.find(x => x.username === u && x.email === em);
-        
-        if (!user) {
-            utils.showAlert('alert-container', 'danger', 'No account found with that username and email.');
-            return;
-        }
-        
-        resetTarget = u;
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
-        const expiry = Date.now() + (5 * 60 * 1000);
-        sessionStorage.setItem('primecare_verification', JSON.stringify({ code, expiry, target: u }));
-        document.getElementById('demo-reset-code').innerText = code;
-        
-        document.getElementById('forgot-step1').style.display = 'none';
-        document.getElementById('forgot-step2').style.display = 'block';
-    });
-
-    document.getElementById('forgot-step2-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const code = document.getElementById('f-code').value;
-        const p1 = document.getElementById('f-password').value;
-        const p2 = document.getElementById('f-confirm').value;
-
-        const stored = JSON.parse(sessionStorage.getItem('primecare_verification'));
-        if (!stored || stored.target !== resetTarget || stored.code !== code || Date.now() > stored.expiry) {
-            return utils.showAlert('alert-container', 'danger', 'Invalid or expired code.');
-        }
-
-        if (!/^(?=.*[A-Z])(?=.*\d).{8,}$/.test(p1)) return utils.showAlert('alert-container', 'danger', 'Password does not meet requirements.');
-        if (p1 !== p2) return utils.showAlert('alert-container', 'danger', 'Passwords do not match.');
-
-        try {
-            let users = api.getAll('users');
-            const userIndex = users.findIndex(u => u.username === resetTarget && u.email === document.getElementById('f-email').value);
-            if (userIndex !== -1) {
-                users[userIndex].password = p1;
-                localStorage.setItem('primecare_users', JSON.stringify(users));
-                document.getElementById('forgot-step2').style.display = 'none';
-                document.getElementById('forgot-step3').style.display = 'block';
-            } else {
-                 utils.showAlert('alert-container', 'danger', 'User not found during reset.');
-            }
-            
-        } catch (error) {
-             utils.showAlert('alert-container', 'danger', 'An error occurred during password reset.');
-        }
-    });
+    // Password resets are handled by Hospital IT Support / Admissions Desk
+    // or through authenticated My Profile -> Change Password.
 }
 
 // --- VALIDATION HELPERS ---

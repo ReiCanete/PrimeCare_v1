@@ -14,7 +14,17 @@ window.refreshDashboard = async function() {
 
 async function renderDashboard(role) {
     const user = await api.getCurrentUser();
-    const stats = await api.getStats();
+    let stats;
+    try {
+        stats = await api.getStats();
+    } catch (err) {
+        document.getElementById('main-stats').innerHTML = `
+            <div class="alert alert-danger" style="grid-column: 1 / -1;">
+                Unable to load live dashboard metrics from the server. Please refresh or contact IT support.
+            </div>
+        `;
+        return;
+    }
     
     const hour = new Date().getHours();
     let greeting = 'Good evening';

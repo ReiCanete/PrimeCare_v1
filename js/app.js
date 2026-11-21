@@ -5,7 +5,7 @@ const savedTheme = localStorage.getItem('primecare_theme') || 'light';
 document.documentElement.setAttribute('data-theme', savedTheme);
 
 const FEATURES = {
-    roleSimulator: true,
+    roleSimulator: false,
     notifications: true,
     telehealth: true,
     wards: true,
@@ -126,8 +126,7 @@ const MENU_CONFIG = {
 // Set FEATURES.roleSimulator = false to switch it off completely.
 // =============================================================================
 function isRoleSimulatorAvailable(realUser) {
-    const devFlag = FEATURES.roleSimulator || (new URLSearchParams(window.location.search).get('dev') === '1');
-    return !!(devFlag && realUser && realUser.role === 'admin');
+    return Boolean(FEATURES.roleSimulator && realUser && realUser.role === 'admin');
 }
 
 if (typeof api !== 'undefined' && typeof api.getCurrentUser === 'function') {

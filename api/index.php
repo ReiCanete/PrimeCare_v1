@@ -21,7 +21,7 @@ requireMethod(['GET']);
 $action = $_GET['action'] ?? 'health';
 
 if ($action !== 'health') {
-    sendError('Unknown API action. Phase 5.1 provides the backend foundation and health-check endpoint only.', 404);
+    sendError('Unknown API action.', 404);
 }
 
 try {
@@ -45,7 +45,6 @@ try {
         'PrimeCare backend is online and database connection is healthy.',
         [
             'service'             => 'PrimeCare API',
-            'phase'               => '5.1',
             'status'              => $pingOk ? 'healthy' : 'degraded',
             'php_execution'       => 'ok',
             'database_connection' => $pingOk ? 'connected' : 'failed',
@@ -57,11 +56,10 @@ try {
     );
 } catch (Throwable $e) {
     sendError(
-        'Database connection failed. Please ensure MySQL is running in XAMPP and the PrimeCare database has been imported.',
+        'Database connection failed. Please contact the system administrator.',
         503,
         [
             'service'             => 'PrimeCare API',
-            'phase'               => '5.1',
             'status'              => 'unhealthy',
             'php_execution'       => 'ok',
             'database_connection' => 'disconnected',

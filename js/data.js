@@ -1,6 +1,6 @@
 // js/data.js — Seed Data & Versioned LocalStorage Initialization
 
-const DATA_VERSION = "1.4"; // Bumped to sync structured patient addresses and P-002 pending status
+const DATA_VERSION = "1.5"; // Scrubbed plaintext passwords from client seed data
 
 function getLocalYYYYMMDD(date) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -16,12 +16,12 @@ const seedData = {
     idTypes: ["PhilSys National ID", "Driver's License", "Passport", "UMID", "Voter's ID", "PRC ID", "Postal ID", "Student ID"],
 
     users: [
-        { id: 'U-001', username: 'admin', password: 'password123', fullName: 'System Admin', role: 'admin', status: 'active', email: 'admin@primecare.ph', mobile: '09170000000', createdAt: '2026-01-01', lastLogin: todayStr, createdBy: null, mustChangePassword: false },
-        { id: 'U-002', username: 'doctor', password: 'password123', fullName: 'Dr. Jose Rizal', role: 'doctor', status: 'active', email: 'jrizal@primecare.ph', mobile: '09170000001', createdAt: '2026-01-01', lastLogin: yesterdayStr, createdBy: 'U-001', mustChangePassword: false },
-        { id: 'U-003', username: 'nurse', password: 'password123', fullName: 'Nurse Maria Clara', role: 'nurse', status: 'active', email: 'mclara@primecare.ph', mobile: '09170000002', createdAt: '2026-01-01', lastLogin: todayStr, createdBy: 'U-001', mustChangePassword: false },
-        { id: 'U-004', username: 'staff', password: 'password123', fullName: 'Andres Bonifacio', role: 'staff', status: 'active', email: 'abonifacio@primecare.ph', mobile: '09170000003', createdAt: '2026-01-01', lastLogin: todayStr, createdBy: 'U-001', mustChangePassword: false },
-        { id: 'U-005', username: 'patient', password: 'password123', fullName: 'Juan Dela Cruz', role: 'patient', status: 'active', email: 'juan@example.com', mobile: '09171234567', createdAt: '2026-10-10', lastLogin: todayStr, createdBy: null, mustChangePassword: false },
-        { id: 'U-006', username: 'patient2', password: 'password123', fullName: 'Leonor Rivera', role: 'patient', status: 'pending', email: 'leonor@example.com', mobile: '09181234567', createdAt: todayStr, lastLogin: null, createdBy: null, mustChangePassword: false }
+        { id: 'U-001', username: 'admin', fullName: 'System Admin', role: 'admin', status: 'active', email: 'admin@primecare.ph', mobile: '09170000000', createdAt: '2026-01-01', lastLogin: todayStr, createdBy: null, mustChangePassword: false },
+        { id: 'U-002', username: 'doctor', fullName: 'Dr. Jose Rizal', role: 'doctor', status: 'active', email: 'jrizal@primecare.ph', mobile: '09170000001', createdAt: '2026-01-01', lastLogin: yesterdayStr, createdBy: 'U-001', mustChangePassword: false },
+        { id: 'U-003', username: 'nurse', fullName: 'Nurse Maria Clara', role: 'nurse', status: 'active', email: 'mclara@primecare.ph', mobile: '09170000002', createdAt: '2026-01-01', lastLogin: todayStr, createdBy: 'U-001', mustChangePassword: false },
+        { id: 'U-004', username: 'staff', fullName: 'Andres Bonifacio', role: 'staff', status: 'active', email: 'abonifacio@primecare.ph', mobile: '09170000003', createdAt: '2026-01-01', lastLogin: todayStr, createdBy: 'U-001', mustChangePassword: false },
+        { id: 'U-005', username: 'patient', fullName: 'Juan Dela Cruz', role: 'patient', status: 'active', email: 'juan@example.com', mobile: '09171234567', createdAt: '2026-10-10', lastLogin: todayStr, createdBy: null, mustChangePassword: false },
+        { id: 'U-006', username: 'patient2', fullName: 'Leonor Rivera', role: 'patient', status: 'pending', email: 'leonor@example.com', mobile: '09181234567', createdAt: todayStr, lastLogin: null, createdBy: null, mustChangePassword: false }
     ],
 
     patients: [
@@ -151,6 +151,20 @@ function initializeMockData() {
             localStorage.setItem(storageKey, JSON.stringify(seedData[key]));
         }
     }
+
+    // Scrub any legacy plaintext password properties from cached user records
+    try {
+        const cachedUsers = JSON.parse(localStorage.getItem('primecare_users') || '[]');
+        if (Array.isArray(cachedUsers) && cachedUsers.some(u => u && Object.prototype.hasOwnProperty.call(u, 'password'))) {
+            const cleaned = cachedUsers.map(u => {
+                if (!u || typeof u !== 'object') return u;
+                const { password, ...safeUser } = u;
+                return safeUser;
+            });
+            localStorage.setItem('primecare_users', JSON.stringify(cleaned));
+        }
+    } catch (e) {}
+
     localStorage.setItem('primecare_dataVersion', DATA_VERSION);
 }
 initializeMockData();

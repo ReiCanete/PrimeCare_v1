@@ -40,14 +40,27 @@ class Database
         ];
 
         $localConfigFile = __DIR__ . '/config.local.php';
-        if (is_file($localConfigFile)) {
+        $hasLocalConfig  = is_file($localConfigFile);
+        $cfg             = $defaults;
+
+        if ($hasLocalConfig) {
             $localConfig = require $localConfigFile;
             if (is_array($localConfig)) {
-                return array_merge($defaults, $localConfig);
+                $cfg = array_merge($defaults, $localConfig);
             }
         }
 
-        return $defaults;
+        if (strtolower((string) getenv('PRIMECARE_ENV')) === 'production') {
+            $missingUser      = trim((string) $cfg['user']) === '';
+            $insecureDefaults = ($cfg['user'] === 'root' && $cfg['pass'] === '');
+
+            if ($missingUser || $insecureDefaults) {
+                error_log('[PrimeCare Security Error] Refusing to use default local database credentials in production.');
+                throw new RuntimeException('Database credentials are not configured for production.');
+            }
+        }
+
+        return $cfg;
     }
 
     /**

@@ -85,16 +85,6 @@
             document.getElementById('last-updated').innerText = `Last updated: ${new Date().toLocaleTimeString()}`;
         }
 
-        function simulateWaitTimes() {
-            if (!waitTimes || waitTimes.length === 0) return;
-            waitTimes = waitTimes.map(wt => {
-                const change = Math.floor(Math.random() * 5) - 2;
-                wt.minutes = Math.max(0, wt.minutes + change);
-                return wt;
-            });
-            renderWaitTimes();
-        }
-
         document.addEventListener('DOMContentLoaded', async () => {
             const emergencyInfo = await safeCall('getEmergencyInfo');
             if (emergencyInfo && Object.keys(emergencyInfo).length > 0) {
@@ -102,7 +92,6 @@
                 document.getElementById('er-address').innerText = emergencyInfo.address || 'N/A';
                 waitTimes = emergencyInfo.erWaitTimes || [];
                 renderWaitTimes();
-                setInterval(simulateWaitTimes, 10000);
             } else {
                 document.getElementById('er-hotline').innerText = 'Unavailable';
                 document.getElementById('er-address').innerText = 'Please contact the hospital directly.';

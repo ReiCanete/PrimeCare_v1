@@ -69,7 +69,7 @@ window.submitContact = async function() {
 
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         sessionStorage.setItem('primecare_profile_otp', code);
-        document.getElementById('demo-otp').innerText = code;
+        document.getElementById('verification-otp').innerText = code;
         document.getElementById('otp-input').value = '';
         utils.openModal('otp-modal');
     } else {
