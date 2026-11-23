@@ -1,0 +1,21 @@
+<?php
+/**
+ * PrimeCare - Local Development Database Configuration (Git-Ignored)
+ *
+ * Default XAMPP MySQL/MariaDB settings:
+ * - Host: 127.0.0.1
+ * - Port: 3306
+ * - Database: primecare_db
+ * - User: root
+ * - Password: (empty string)
+ */
+
+return [
+    'host'    => 'prime-care-hms.infinityfreeapp.com',
+    'port'    => '3306',
+    'dbname'  => 'if0_43512461_primecare',
+    'user'    => 'if0_43512461',
+    'pass'    => 'J0wWwYxP4M4vbJ',
+    'charset' => 'utf8mb4',
+];
+
