@@ -42,16 +42,16 @@
             </div>
 
             <div class="table-responsive">
-                <table class="table">
+                <table class="table appointments-table">
                     <thead>
                         <tr>
-                            <th class="sortable" onclick="setSort('id')">ID</th>
-                            <th class="sortable desc" onclick="setSort('datetime')">Date & Time</th>
-                            <th>Patient</th>
-                            <th>Doctor</th>
-                            <th>Type</th>
-                            <th>Status</th>
-                            <th class="text-right">Actions</th>
+                            <th class="sortable col-id" onclick="setSort('id')">ID</th>
+                            <th class="sortable asc col-datetime" onclick="setSort('datetime')">Date & Time</th>
+                            <th class="col-patient">Patient</th>
+                            <th class="col-doctor">Doctor</th>
+                            <th class="col-type">Type</th>
+                            <th class="col-status">Status</th>
+                            <th class="text-right col-actions">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="table-body"></tbody>

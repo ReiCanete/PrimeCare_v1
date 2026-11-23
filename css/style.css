@@ -1264,3 +1264,65 @@ th.sortable.desc::after { content: ' \2193'; opacity: 1; color: var(--color-acce
     -webkit-print-color-adjust: exact;
   }
 }
+
+/* ---------- 6. Appointments Table Layout Stability & Completed Row Styling ---------- */
+.appointments-table {
+  table-layout: fixed;
+  min-width: 1080px;
+}
+.appointments-table th {
+  white-space: nowrap;
+}
+.appointments-table th.sortable::after {
+  display: inline-block;
+  width: 1.1em;
+  text-align: center;
+}
+.appointments-table .col-id {
+  width: 84px;
+  white-space: nowrap;
+}
+.appointments-table .col-datetime {
+  width: 148px;
+  white-space: nowrap;
+}
+.appointments-table .col-patient {
+  width: 16%;
+}
+.appointments-table .col-doctor {
+  width: 18%;
+}
+.appointments-table .col-type {
+  width: 112px;
+  white-space: nowrap;
+}
+.appointments-table .col-status {
+  width: 120px;
+  white-space: nowrap;
+}
+.appointments-table .col-actions {
+  width: 340px;
+  white-space: nowrap;
+}
+
+.appointments-table tr.appointment-row-completed td {
+  background-color: #f3f4f6;
+  color: var(--color-text-muted);
+}
+.appointments-table tr.appointment-row-completed td strong {
+  color: #475569;
+  font-weight: 600;
+}
+.appointments-table tr.appointment-row-completed:hover td {
+  background-color: #e9edf2;
+}
+[data-theme="dark"] .appointments-table tr.appointment-row-completed td {
+  background-color: rgba(148, 163, 184, 0.08);
+  color: var(--color-text-muted);
+}
+[data-theme="dark"] .appointments-table tr.appointment-row-completed td strong {
+  color: #cbd5e1;
+}
+[data-theme="dark"] .appointments-table tr.appointment-row-completed:hover td {
+  background-color: rgba(148, 163, 184, 0.14);
+}

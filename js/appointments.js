@@ -1,4 +1,47 @@
-let state = { keyword: '', status: 'All', doctorId: 'All', type: 'All', dateFrom: '', dateTo: '', sortBy: 'datetime', sortDir: 'desc', page: 1, limit: 10 };
+let state = { keyword: '', status: 'All', doctorId: 'All', type: 'All', dateFrom: '', dateTo: '', sortBy: 'datetime', sortDir: 'asc', page: 1, limit: 10 };
+
+function getAppointmentTimestamp(appt) {
+    if (!appt || !appt.date) return Number.MAX_SAFE_INTEGER;
+    const dateParts = String(appt.date).split('-').map(Number);
+    if (dateParts.length !== 3 || dateParts.some(n => !Number.isFinite(n))) return Number.MAX_SAFE_INTEGER;
+    const timeParts = String(appt.time || '00:00').split(':').map(Number);
+    const hours = Number.isFinite(timeParts[0]) ? timeParts[0] : 0;
+    const minutes = Number.isFinite(timeParts[1]) ? timeParts[1] : 0;
+    const seconds = Number.isFinite(timeParts[2]) ? timeParts[2] : 0;
+    return new Date(dateParts[0], dateParts[1] - 1, dateParts[2], hours, minutes, seconds, 0).getTime();
+}
+
+function sortAppointments(appts, sortBy, sortDir) {
+    const list = Array.isArray(appts) ? appts.slice() : [];
+    if (sortBy === 'datetime') {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayStartTs = todayStart.getTime();
+
+        return list.sort((a, b) => {
+            const aTs = getAppointmentTimestamp(a);
+            const bTs = getAppointmentTimestamp(b);
+
+            if (sortDir === 'asc') {
+                const aUpcoming = aTs >= todayStartTs ? 0 : 1;
+                const bUpcoming = bTs >= todayStartTs ? 0 : 1;
+                if (aUpcoming !== bUpcoming) return aUpcoming - bUpcoming;
+                if (aTs !== bTs) return aTs - bTs;
+                return String(a.id || '').localeCompare(String(b.id || ''));
+            }
+
+            if (bTs !== aTs) return bTs - aTs;
+            return String(b.id || '').localeCompare(String(a.id || ''));
+        });
+    }
+    if (sortBy === 'id') {
+        return list.sort((a, b) => {
+            const cmp = String(a.id || '').localeCompare(String(b.id || ''));
+            return sortDir === 'asc' ? cmp : -cmp;
+        });
+    }
+    return list;
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -87,6 +130,7 @@ window.setPage = async function(p) { state.page = p; await renderTable(); };
 
 async function renderTable() {
     let appts = await api.searchAppointments(state);
+    appts = sortAppointments(appts, state.sortBy, state.sortDir);
     
     const baseState = { ...state, status: 'All' };
     const allAppts = await api.searchAppointments(baseState);
@@ -135,15 +179,16 @@ async function renderTable() {
                 actions += `<button class="btn btn-sm btn-outline" style="margin-left: 0.25rem; color: var(--color-success); border-color: var(--color-success);" onclick="updateStatus('${a.id}', 'Completed')">Complete</button>`;
             }
 
+            const isCompleted = a.status === 'Completed';
             return `
-            <tr>
-                <td><strong>${a.id}</strong></td>
-                <td>${utils.formatDate(a.date)}<br><span style="font-size: var(--fs-xs); color: var(--color-text-muted);">${utils.formatTime(a.time)}</span></td>
-                <td>${utils.escapeHTML(a.patientName)}</td>
-                <td>${utils.escapeHTML(utils.formatDoctorName(a.doctorName))}<br><span style="font-size: var(--fs-xs); color: var(--color-text-muted);">${a.specialization}</span></td>
-                <td><span class="badge badge-neutral">${a.type}</span></td>
-                <td><span class="badge badge-${badge}">${a.status}</span></td>
-                <td class="actions-cell">${actions}</td>
+            <tr${isCompleted ? ' class="appointment-row-completed"' : ''}>
+                <td class="col-id"><strong>${a.id}</strong></td>
+                <td class="col-datetime">${utils.formatDate(a.date)}<br><span style="font-size: var(--fs-xs); color: var(--color-text-muted);">${utils.formatTime(a.time)}</span></td>
+                <td class="col-patient">${utils.escapeHTML(a.patientName)}</td>
+                <td class="col-doctor">${utils.escapeHTML(utils.formatDoctorName(a.doctorName))}<br><span style="font-size: var(--fs-xs); color: var(--color-text-muted);">${a.specialization}</span></td>
+                <td class="col-type"><span class="badge badge-neutral">${a.type}</span></td>
+                <td class="col-status"><span class="badge badge-${badge}">${a.status}</span></td>
+                <td class="actions-cell col-actions">${actions}</td>
             </tr>`;
         }).join('');
     }
