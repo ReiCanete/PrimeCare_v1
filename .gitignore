@@ -1,6 +1,7 @@
 .env
 .env.*
 api/config/config.local.php
+database/demo-credentials.local.txt
 vendor/
 node_modules/
 *.log

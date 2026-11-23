@@ -30,7 +30,7 @@ async function initLogin() {
     toggle.addEventListener('click', () => {
         const type = passInput.getAttribute('type') === 'password' ? 'text' : 'password';
         passInput.setAttribute('type', type);
-        toggle.innerText = type === 'password' ? '👁️' : '🙈';
+        toggle.innerHTML = utils.icon(type === 'password' ? 'eye' : 'eyeOff', 18);
     });
 
     form.addEventListener('submit', async (e) => {

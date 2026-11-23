@@ -48,13 +48,13 @@
                             </div>
                         </div>
                         <div class="print-area-hide" style="display: flex; gap: 8px;">
-                            <button class="btn btn-outline" onclick="window.print()">🖨️ Print Summary</button>
+                            <button class="btn btn-outline" onclick="window.print()"><span data-lucide="printer" data-size="16"></span> Print Summary</button>
                             <button class="btn btn-primary doc-admin-only" onclick="openRecordModal()">+ New Record</button>
                         </div>
                     </div>
 
                     <div id="c-allergy-banner" class="allergy-alert" style="display: none;">
-                        ⚠️ <strong>ALLERGY ALERT:</strong> <span id="c-allergies" style="margin-left: 8px;"></span>
+                        <span data-lucide="warning" data-size="16" style="margin-right: 6px;"></span><strong>ALLERGY ALERT:</strong> <span id="c-allergies" style="margin-left: 8px;"></span>
                     </div>
                     <div id="c-conditions" style="font-size: 14px; color: var(--color-warning); font-weight: 600; margin-bottom: 24px; display: none;">
                         Chronic Conditions: <span id="c-cond-text"></span>

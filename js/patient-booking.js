@@ -133,7 +133,7 @@ function renderDoctorScheduleOverview(doctor) {
         upcomingHtml = `
             <div style="margin-bottom: 16px;">
                 <h4 style="font-size: 13px; color: var(--color-primary); text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                    📅 Upcoming Available Schedules (Next 7 Days)
+                    ${utils.icon('appointments', 15)} Upcoming Available Schedules (Next 7 Days)
                 </h4>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                     ${avail.upcomingSchedules.map(s => `
@@ -148,8 +148,8 @@ function renderDoctorScheduleOverview(doctor) {
         `;
     } else {
         upcomingHtml = `
-            <div class="alert alert-warning" style="margin-bottom: 16px; font-size: 13px;">
-                ⚠️ No upcoming clinic schedules found for this doctor in the next 7 days.
+            <div class="alert alert-warning" style="margin-bottom: 16px; font-size: 13px; display: flex; align-items: center; gap: 8px;">
+                ${utils.icon('warning', 16)} No upcoming clinic schedules found for this doctor in the next 7 days.
             </div>
         `;
     }
@@ -339,7 +339,7 @@ async function renderMyAppointments() {
                 actions += `<button class="btn btn-sm btn-outline" onclick="openReschedule('${a.id}')">Reschedule</button>`;
                 actions += `<button class="btn btn-sm btn-outline" style="margin-left: 8px; color: var(--color-danger); border-color: var(--color-danger);" onclick="promptCancel('${a.id}')">Cancel</button>`;
             } else {
-                actions += `<span style="font-size: 12px; color: var(--color-text-muted); cursor: help;" title="Changes not allowed within 24 hours of appointment. Call the clinic.">🔒 Locked</span>`;
+                actions += `<span style="font-size: 12px; color: var(--color-text-muted); cursor: help; display: inline-flex; align-items: center; gap: 4px;" title="Changes not allowed within 24 hours of appointment. Call the clinic.">${utils.icon('lock', 13)} Locked</span>`;
             }
             
             if (a.type === 'telehealth' && a.status === 'Confirmed') {

@@ -64,6 +64,43 @@ h2, h3, .section-title { font-size: 16px; font-weight: 600; color: var(--color-p
 .text-right { text-align: right !important; }
 .text-center { text-align: center !important; }
 
+/* Locally Bundled Lucide SVG Icons */
+.lucide-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: -0.15em;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.lucide-icon svg {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+.feature-card .feature-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  border-radius: 14px;
+  background: var(--teal-bg);
+  color: var(--color-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.quick-info-strip > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.payment-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
 /* --- SHELL & SIDEBAR --- */
 .sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar-width); height: 100vh; background: var(--color-surface); border-right: 1px solid var(--color-border); z-index: 40; transition: width 0.2s ease; display: flex; flex-direction: column; }
 .sidebar-brand { height: var(--topbar-height); padding: 0 24px; display: flex; align-items: center; font-size: 18px; font-weight: 700; border-bottom: 1px solid var(--color-border); color: var(--color-primary); white-space: nowrap; overflow: hidden; }

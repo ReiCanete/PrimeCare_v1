@@ -101,7 +101,7 @@ async function renderPrescriptions() {
                 ${itemsHtml}
             </ul>
             <div style="text-align: right; border-top: 1px solid var(--color-border); padding-top: var(--space-16);">
-                <button class="btn btn-sm btn-outline" onclick="printRx('${rx.id}')">🖨️ Print / View</button>
+                <button class="btn btn-sm btn-outline" onclick="printRx('${rx.id}')">${utils.icon('printer', 14)} Print / View</button>
             </div>
         </div>`;
     }).join('');
@@ -135,8 +135,8 @@ async function renderLabs() {
             const idx = history[l.testName].lastIndexOf(val);
             if (idx > 0) {
                 const prev = history[l.testName][idx - 1];
-                if (val > prev) trend = '<span style="color: var(--color-danger); font-size: var(--fs-lg);" title="Higher than previous">⬆️</span>';
-                else if (val < prev) trend = '<span style="color: var(--color-success); font-size: var(--fs-lg);" title="Lower than previous">⬇️</span>';
+                if (val > prev) trend = `<span style="color: var(--color-danger); margin-left: 4px;" title="Higher than previous">${utils.icon('arrowUp', 14)}</span>`;
+                else if (val < prev) trend = `<span style="color: var(--color-success); margin-left: 4px;" title="Lower than previous">${utils.icon('arrowDown', 14)}</span>`;
             }
             history[l.testName].splice(idx, 1);
         }

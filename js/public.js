@@ -32,7 +32,7 @@ async function renderPublicLayout() {
                 <img src="assets/primecare.png" alt="Logo" style="height: 32px; margin-right: 10px; object-fit: contain;">
                 PRIME<span>CARE</span>
             </a>
-            <button class="mobile-menu-btn" onclick="toggleMobileMenu()" aria-label="Toggle menu">☰</button>
+            <button class="mobile-menu-btn" onclick="toggleMobileMenu()" aria-label="Toggle menu">${utils.icon('menu', 22)}</button>
             <div class="public-nav-links" id="nav-links">
                 <a href="index.html" class="${currentPage === 'home' ? 'active' : ''}">Home</a>
                 <a href="doctors.html" class="${currentPage === 'doctors' ? 'active' : ''}">Find a Doctor</a>
@@ -53,8 +53,8 @@ async function renderPublicLayout() {
                 <div>
                     <div class="footer-brand">PRIME<span>CARE</span></div>
                     <p class="footer-tagline">Your Health, Our Priority.</p>
-                    <p class="footer-contact footer-contact-first">📞 (02) 8123-4567</p>
-                    <p class="footer-contact">📍 123 Rizal St., Quezon City</p>
+                    <p class="footer-contact footer-contact-first" style="display:flex;align-items:center;gap:6px;">${utils.icon('phone', 14)} (02) 8123-4567</p>
+                    <p class="footer-contact" style="display:flex;align-items:center;gap:6px;">${utils.icon('mapPin', 14)} 123 Rizal St., Quezon City</p>
                 </div>
                 <div>
                     <h3>Quick Links</h3>

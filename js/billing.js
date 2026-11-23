@@ -282,7 +282,7 @@ window.viewBill = async function(id) {
         itemsHtml += `
             <tr class="bill-category-header" style="background: var(--color-bg); font-weight: 600;">
                 <td colspan="5" style="color: var(--color-primary); padding: 8px 16px; border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border);">
-                    📂 ${utils.escapeHTML(grp.name)}
+                    ${utils.icon('folderOpen', 15)} ${utils.escapeHTML(grp.name)}
                 </td>
             </tr>
         `;

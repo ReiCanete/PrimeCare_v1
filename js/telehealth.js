@@ -30,7 +30,7 @@ async function renderAppointments() {
     if (appts.length === 0) {
         list.innerHTML = `
             <div class="empty-state" style="grid-column: 1/-1;">
-                <div style="font-size: 32px; margin-bottom: 8px;">🖥️</div>
+                <div style="margin-bottom: 10px; color: var(--color-accent);">${utils.icon('telehealth', 36)}</div>
                 <strong style="color: var(--color-primary);">No upcoming telehealth appointments</strong>
                 <p style="margin-top: 4px;">Book an appointment and choose "telehealth" as the visit type.</p>
                 <a href="book-appointment.html" class="btn btn-primary" style="margin-top: 16px;">Book Appointment</a>
@@ -57,7 +57,7 @@ async function renderAppointments() {
             let reason = 'Complete pre-visit form after confirmation';
             if (!isConfirmed) reason = 'Waiting for staff confirmation';
             else if (!hasForm) reason = 'Pre-visit form required';
-            action = `<button class="btn btn-outline" disabled title="${utils.escapeHTML(reason)}">Video Unavailable 🔒</button>
+            action = `<button class="btn btn-outline" disabled title="${utils.escapeHTML(reason)}">${utils.icon('lock', 14)} Video Unavailable</button>
                       <div class="th-reason">${utils.escapeHTML(reason)}</div>`;
         }
 
@@ -73,14 +73,14 @@ async function renderAppointments() {
 
             <div class="th-checklist">
                 <div class="th-check">
-                    <span>${isConfirmed ? '✅' : '⏳'}</span> Appointment confirmed
+                    <span style="color: var(--color-${isConfirmed ? 'success' : 'warning'});">${utils.icon(isConfirmed ? 'checkCircle' : 'clock', 16)}</span> Appointment confirmed
                 </div>
                 <div class="th-check">
-                    <span>${hasForm ? '✅' : '❌'}</span> Pre-visit questionnaire
+                    <span style="color: var(--color-${hasForm ? 'success' : 'danger'});">${utils.icon(hasForm ? 'checkCircle' : 'xCircle', 16)}</span> Pre-visit questionnaire
                     ${!hasForm && isConfirmed ? `<button class="btn btn-sm btn-outline" style="margin-left: auto;" onclick="openPreVisitForm('${a.id}')">Complete Now</button>` : ''}
                 </div>
                 <div class="th-check">
-                    <span>${isWindowOpen ? '✅' : '⏳'}</span> Join window open
+                    <span style="color: var(--color-${isWindowOpen ? 'success' : 'text-muted'});">${utils.icon(isWindowOpen ? 'checkCircle' : 'clock', 16)}</span> Join window open
                 </div>
             </div>
 

@@ -47,10 +47,10 @@ async function renderDashboard(role) {
             <span class="badge badge-neutral" style="text-transform: uppercase;">${role}</span>
         </div>
         <div style="margin-top: 16px; font-size: 13px; color: var(--color-text-muted); display: flex; align-items: center; gap: 8px;">
-            <span class="menu-icon" style="width: 16px; height: 16px;">${ICONS.appointments || '📅'}</span> ${new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            ${utils.icon('appointments', 16)} ${new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </div>
         <div class="greeting-actions" style="margin-top: 16px;">
-             <button class="btn btn-sm btn-outline" onclick="refreshDashboard()">↻ Refresh</button>
+             <button class="btn btn-sm btn-outline" onclick="refreshDashboard()">${utils.icon('refresh', 14)} Refresh</button>
         </div>
     `;
 

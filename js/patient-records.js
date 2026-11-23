@@ -236,7 +236,7 @@ window.viewPatient = async function(id) {
         document.getElementById('v-action-bar').innerHTML = `
             <div class="verification-banner">
                 <div class="verification-banner-info">
-                    <span class="verification-banner-title">⚠️ Pending Staff Verification</span>
+                    <span class="verification-banner-title" style="display: inline-flex; align-items: center; gap: 6px;">${utils.icon('warning', 16)} Pending Staff Verification</span>
                     <span class="verification-banner-desc">Review submitted identity and details before approving portal access.</span>
                 </div>
                 <div class="verification-banner-actions">

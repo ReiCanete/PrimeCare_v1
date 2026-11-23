@@ -19,7 +19,7 @@
         </div>
 
         <div id="allergy-banner" class="allergy-alert print-area-hide" style="display: none;">
-            ⚠️ <strong>ALLERGY ALERT:</strong> <span id="allergies-text" style="margin-left: 8px;"></span>
+            <span data-lucide="warning" data-size="16" style="margin-right: 6px;"></span><strong>ALLERGY ALERT:</strong> <span id="allergies-text" style="margin-left: 8px;"></span>
         </div>
         <div id="conditions-banner" style="font-size: 14px; color: var(--color-warning); font-weight: 600; margin-bottom: 24px; display: none;" class="print-area-hide">
             Chronic Conditions: <span id="cond-text"></span>
@@ -38,7 +38,7 @@
             <div class="card print-area">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
                     <h3 style="color: var(--color-primary);">Clinical History</h3>
-                    <button class="btn btn-outline print-area-hide" onclick="window.print()">🖨️ Print Summary</button>
+                    <button class="btn btn-outline print-area-hide" onclick="window.print()"><span data-lucide="printer" data-size="16"></span> Print Summary</button>
                 </div>
                 <div class="timeline" id="visits-list">
                     <!-- Injected via JS -->
@@ -151,7 +151,7 @@
             </div>
 
             <div class="modal-footer print-area-hide">
-                <button class="btn btn-primary" onclick="window.print()">🖨️ Print</button>
+                <button class="btn btn-primary" onclick="window.print()"><span data-lucide="printer" data-size="16"></span> Print</button>
             </div>
         </div>
     </div>
