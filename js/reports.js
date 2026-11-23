@@ -110,25 +110,27 @@ async function renderReport(title, dateFrom, dateTo, data) {
 
 window.exportCSV = function() {
     if (!currentReportData || currentReportData.rows.length === 0) return utils.showToast('No data to export.', 'warning');
-    
-    let csvContent = "data:text/csv;charset=utf-8,";
-    // Header
-    csvContent += currentReportData.columns.join(",") + "\n";
-    // Rows
-    currentReportData.rows.forEach(row => {
-        let rowStr = row.map(cell => {
-            let str = String(cell);
-            if (str.includes(',')) str = `"${str}"`;
-            return str;
-        }).join(",");
-        csvContent += rowStr + "\n";
-    });
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `${currentReportData.title.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+    const escapeCsvCell = (cell) => {
+        const str = cell === null || cell === undefined ? '' : String(cell);
+        if (/[",\r\n]/.test(str)) {
+            return '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+    };
+
+    const lines = [
+        currentReportData.columns.map(escapeCsvCell).join(','),
+        ...currentReportData.rows.map(row => row.map(escapeCsvCell).join(','))
+    ];
+    const csvBlob = new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8;' });
+    const blobUrl = URL.createObjectURL(csvBlob);
+
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = `${currentReportData.title.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 };

@@ -714,7 +714,7 @@ th.sortable.desc::after { content: ' \2193'; opacity: 1; color: var(--color-acce
 .timeline-time { font-size: 12px; color: var(--color-text-muted); margin-top: 2px; }
 
 /* Staff dashboard: 3 equal columns on wide screens, wrapping below that */
-[data-area="staff"] .grid-3 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+[data-area="staff"] .grid-3 { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
 @media (min-width: 1200px) { [data-area="staff"] .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 /* ---------- 7. Topbar bits ---------- */
@@ -758,6 +758,11 @@ th.sortable.desc::after { content: ' \2193'; opacity: 1; color: var(--color-acce
   .modal-footer .btn { width: 100%; }
   .chart-container { height: 180px; }
   .stepper { max-width: 100%; }
+  .greeting-card { min-width: 0; width: 100%; padding: 18px; }
+  .grid > *, .form-grid > * { min-width: 0; }
+  #ward-progress > div { flex-wrap: wrap; }
+  .auth-content { padding: 20px 16px; max-width: 100%; }
+  .form-step .btn { white-space: normal; text-align: center; }
 }
 
 /* ---------- Bill / Schedule tables (previously unstyled) ---------- */

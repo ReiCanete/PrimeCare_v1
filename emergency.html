@@ -18,8 +18,8 @@
             <p style="margin-top: 1rem; font-weight: 500;" id="er-address">...</p>
         </div>
 
-        <h2 style="margin: 3rem 0 1rem;">Live ER Wait Times</h2>
-        <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Estimated wait times based on current patient volume. <span id="last-updated" style="font-weight: 600;"></span></p>
+        <h2 style="margin: 3rem 0 1rem;">Typical ER Wait Estimates</h2>
+        <p style="color: var(--text-muted); margin-bottom: 1.5rem;">General reference wait estimates; actual wait times vary by triage priority and current ER volume. Call the emergency hotline for live status.</p>
         
         <div class="grid grid-4" id="wait-times-grid">
             <!-- Wait times injected here -->
@@ -82,7 +82,8 @@
                 `;
             }).join('');
             
-            document.getElementById('last-updated').innerText = `Last updated: ${new Date().toLocaleTimeString()}`;
+            const lastUpdatedEl = document.getElementById('last-updated');
+            if (lastUpdatedEl) lastUpdatedEl.innerText = '';
         }
 
         document.addEventListener('DOMContentLoaded', async () => {

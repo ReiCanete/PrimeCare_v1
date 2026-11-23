@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', async () => {
     const user = await api.getCurrentUser();
-    if (user) await renderDashboard(user.role);
+    if (user && user.role !== 'patient') await renderDashboard(user.role);
 });
 
 window.addEventListener('primecare:rolechange', async (e) => {

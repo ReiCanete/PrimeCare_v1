@@ -473,12 +473,11 @@ async function renderShell() {
         return;
     }
     
-    // Preview mode is active ONLY when staff/admin directly visits patient pages without simulating patient
-    const isPreview = area === 'patient' && user.role !== 'patient';
-    if (isPreview) {
-        localStorage.setItem('primecare_preview', '1');
-    } else {
-        localStorage.removeItem('primecare_preview');
+    // Enforce symmetric role isolation: staff/admin/doctor/nurse cannot enter patient portal routes
+    localStorage.removeItem('primecare_preview');
+    if (area === 'patient' && user.role !== 'patient') {
+        window.location.href = '../staff/dashboard.html';
+        return;
     }
 
     const currentPage = document.body.getAttribute('data-page') || '';
@@ -625,22 +624,8 @@ const menuItems = roleMenu.map(item => `
 
     const pageContent = document.getElementById('page-content');
     if (pageContent) {
-        const inPreviewMode = isPreview;
         const existingPreview = document.getElementById('preview-banner');
-        if (inPreviewMode) {
-            if (!existingPreview) {
-                const banner = document.createElement('div');
-                banner.id = 'preview-banner';
-                banner.className = 'alert alert-info print-area-hide';
-                banner.style.cssText = 'background: var(--info-bg); color: var(--color-info); border: 1px solid var(--color-border); padding: 1rem; border-radius: 4px; margin-bottom: 1.5rem; font-weight: bold; display: flex; justify-content: space-between; align-items: center;';
-                banner.innerHTML = `
-                    <span><span class="menu-icon" style="margin-right:8px">${ICONS.eye}</span> <strong>Preview Mode:</strong> Viewing the Patient Portal as <strong>${utils.escapeHTML(user.fullName)}</strong>. Actions are read-only.</span>
-                    <button class="btn btn-outline btn-sm" style="background: var(--color-surface);" onclick="simulateRole('${realUser.role}')">Return to Staff Portal</button>
-                `;
-                pageContent.insertBefore(banner, pageContent.firstChild);
-            }
-            setTimeout(enforcePreviewReadOnly, 50);
-        } else if (existingPreview) {
+        if (existingPreview) {
             existingPreview.remove();
         }
 
